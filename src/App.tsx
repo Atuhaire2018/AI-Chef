@@ -852,8 +852,8 @@ export default function App() {
                 </button>
               </div>
             </div>
-            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 900, color: C.white, lineHeight: 1.1 }}>
-              What's in<br />your Fridge?
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 900, color: C.white, lineHeight: 1.1 }}>
+              AI Chef
             </div>
             <div style={{ fontSize: 12, color: `${C.white}80`, marginTop: 6 }}>
               Scan, select ingredients · get instant recipes

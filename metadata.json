@@ -1,6 +1,6 @@
 {
-  "name": "What's in My Fridge?",
-  "description": "Discover ready-to-make recipes by searching your available fridge or pantry ingredients.",
+  "name": "AI Chef",
+  "description": "Discover ready-to-make recipes by searching your available fridge or pantry ingredients using high-precision AI.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
