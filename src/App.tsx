@@ -1581,29 +1581,53 @@ export default function App() {
                           )}
                         </div>
 
-                        <button
-                          id="export-tasks-cart-btn"
-                          onClick={handleExportCartToGoogleTasks}
-                          disabled={exportingTasksCart || cart.length === 0}
-                          style={{
-                            background: "#2563EB",
-                            color: "#FFFFFF",
-                            border: "none",
-                            borderRadius: 8,
-                            padding: "8px 14px",
-                            fontSize: 11,
-                            fontWeight: 700,
-                            cursor: "pointer",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 6,
-                            transition: "all 0.15s",
-                            opacity: exportingTasksCart ? 0.7 : 1
-                          }}
-                        >
-                          {exportingTasksCart ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : "🚀"} 
-                          Export {cart.length} items to Tasks
-                        </button>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                          <button
+                            id="export-tasks-cart-btn"
+                            onClick={handleExportCartToGoogleTasks}
+                            disabled={exportingTasksCart || cart.length === 0}
+                            style={{
+                              background: "#2563EB",
+                              color: "#FFFFFF",
+                              border: "none",
+                              borderRadius: 8,
+                              padding: "8px 14px",
+                              fontSize: 11,
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 6,
+                              transition: "all 0.15s",
+                              opacity: exportingTasksCart || cart.length === 0 ? 0.6 : 1
+                            }}
+                          >
+                            {exportingTasksCart ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : "🚀"} 
+                            Export {cart.length} items to Tasks
+                          </button>
+
+                          <a
+                            href="https://tasks.google.com"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              background: "#F1F5F9",
+                              color: "#334155",
+                              border: "1px solid #CBD5E1",
+                              borderRadius: 8,
+                              padding: "8px 14px",
+                              fontSize: 11,
+                              fontWeight: 700,
+                              textDecoration: "none",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 6,
+                              transition: "all 0.15s"
+                            }}
+                          >
+                            📋 Open Google Tasks ↗
+                          </a>
+                        </div>
                       </div>
                     )}
 
