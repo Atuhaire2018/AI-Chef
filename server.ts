@@ -227,9 +227,20 @@ app.post("/api/recipes", async (req, res) => {
        return;
     }
 
-    // 1. Generate unique cache key based on engine, sorted ingredients, and active filters
+    // 1. Generate unique cache key based on engine, sorted ingredients, and active filters (sorted keys)
     const sortedIngsKey = ings.map(i => i.toLowerCase().trim()).sort().join(",");
-    const filterKey = JSON.stringify(filters || {});
+    let orderedFilters: any = {};
+    if (filters && typeof filters === "object") {
+      Object.keys(filters).sort().forEach(k => {
+        const val = filters[k];
+        if (Array.isArray(val)) {
+          orderedFilters[k] = [...val].sort();
+        } else {
+          orderedFilters[k] = val;
+        }
+      });
+    }
+    const filterKey = JSON.stringify(orderedFilters);
     const cacheKey = `${engine}:${sortedIngsKey}:${filterKey}`;
 
     // 2. Check in-memory query cache for instant hits
@@ -315,6 +326,9 @@ app.post("/api/recipes", async (req, res) => {
           isDifficultyMatched = recipe.difficulty.toLowerCase() === reqDiff;
         }
 
+        const nameMatch = cleanUserIngs.some(ui => lowerName.includes(ui) || ui.includes(lowerName));
+        const cuisineMatch = cleanUserIngs.some(ui => lowerCuisine.includes(ui) || ui.includes(lowerCuisine));
+
         return {
           recipe: {
             ...recipe,
@@ -324,6 +338,8 @@ app.post("/api/recipes", async (req, res) => {
           usedCount,
           missingCount,
           matchRatio,
+          nameMatch,
+          cuisineMatch,
           isDietMatched,
           isCuisineMatched,
           isTimeMatched,
@@ -342,8 +358,13 @@ app.post("/api/recipes", async (req, res) => {
         filtered = scored;
       }
 
-      // Sort by highest available ingredients matched, then fewest missing ingredients
+      // Sort by direct keyword/name match, then highest available ingredients matched, then fewest missing ingredients
       filtered.sort((a, b) => {
+        const scoreA = (a.nameMatch ? 100 : 0) + (a.cuisineMatch ? 50 : 0);
+        const scoreB = (b.nameMatch ? 100 : 0) + (b.cuisineMatch ? 50 : 0);
+        if (scoreB !== scoreA) {
+          return scoreB - scoreA;
+        }
         if (b.usedCount !== a.usedCount) {
           return b.usedCount - a.usedCount;
         }
@@ -354,7 +375,7 @@ app.post("/api/recipes", async (req, res) => {
       results = filtered.slice(0, 4).map(f => f.recipe);
       
     } else {
-      // 4. CREATIVE AI ENGINE: Google Gemini 3.5-Flash
+      // 4. CREATIVE AI ENGINE: Google Gemini 2.0-Flash
       const ai = getAIClient();
       const requirements: string[] = [];
       if (filters) {

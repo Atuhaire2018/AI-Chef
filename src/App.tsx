@@ -127,6 +127,23 @@ export default function App() {
 
   // Cart copied states
   const [cartCopied, setCartCopied] = useState<boolean>(false);
+  const [recipeSearchQuery, setRecipeSearchQuery] = useState<string>("");
+
+  // Suggested Recipes (AI Chef Section) Sorting State
+  const [recipeSortBy, setRecipeSortBy] = useState<"missing" | "time" | "calories" | "name" | "rating">(() => {
+    return (localStorage.getItem("recipe_sort_by") as any) || "missing";
+  });
+  const [recipeSortOrder, setRecipeSortOrder] = useState<"asc" | "desc">(() => {
+    return (localStorage.getItem("recipe_sort_order") as any) || "asc";
+  });
+
+  // Shopping Cart List Sorting State
+  const [cartSortBy, setCartSortBy] = useState<"checked" | "alphabetical">(() => {
+    return (localStorage.getItem("cart_sort_by") as any) || "checked";
+  });
+  const [cartSortOrder, setCartSortOrder] = useState<"asc" | "desc">(() => {
+    return (localStorage.getItem("cart_sort_order") as any) || "asc";
+  });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -300,6 +317,22 @@ export default function App() {
       console.error("Failed to load Google Task Lists", e);
     }
   };
+  
+  useEffect(() => {
+    localStorage.setItem("recipe_sort_by", recipeSortBy);
+  }, [recipeSortBy]);
+
+  useEffect(() => {
+    localStorage.setItem("recipe_sort_order", recipeSortOrder);
+  }, [recipeSortOrder]);
+
+  useEffect(() => {
+    localStorage.setItem("cart_sort_by", cartSortBy);
+  }, [cartSortBy]);
+
+  useEffect(() => {
+    localStorage.setItem("cart_sort_order", cartSortOrder);
+  }, [cartSortOrder]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -1186,25 +1219,148 @@ export default function App() {
                 )}
 
                 {/* Recipe lists suggestions */}
-                {!loading && recipes.length > 0 && (
-                  <>
-                    <div style={{ fontSize: 10, color: C.muted, fontWeight: 600, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 12, fontFamily: "monospace" }}>
-                      🍽️ Suggested Recipes ({recipes.length})
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12, marginBottom: 12 }}>
-                      {recipes.map(r => (
-                        <RecipeCard 
-                          key={r.id} 
-                          r={r} 
-                          isSaved={isSaved(r)} 
-                          toggleSave={() => handleToggleSave(r)} 
-                          onOpen={() => setSelectedRecipe(r)} 
-                          rating={ratings[r.name] || 0}
+                {!loading && recipes.length > 0 && (() => {
+                  const filteredRecipes = recipes.filter(r => {
+                    const q = recipeSearchQuery.toLowerCase().trim();
+                    if (!q) return true;
+                    return r.name.toLowerCase().includes(q) || 
+                           r.desc.toLowerCase().includes(q) || 
+                           r.cuisine.toLowerCase().includes(q) ||
+                           r.allIngs.some(ing => ing.toLowerCase().includes(q));
+                  });
+
+                  const sortedRecipes = [...filteredRecipes].sort((a, b) => {
+                    let valA: any = 0;
+                    let valB: any = 0;
+                    if (recipeSortBy === "missing") {
+                      valA = a.missing ? a.missing.length : 0;
+                      valB = b.missing ? b.missing.length : 0;
+                    } else if (recipeSortBy === "time") {
+                      valA = a.time || 0;
+                      valB = b.time || 0;
+                    } else if (recipeSortBy === "calories") {
+                      valA = a.nutritional?.calories || 0;
+                      valB = b.nutritional?.calories || 0;
+                    } else if (recipeSortBy === "name") {
+                      return recipeSortOrder === "asc"
+                        ? a.name.localeCompare(b.name)
+                        : b.name.localeCompare(a.name);
+                    } else if (recipeSortBy === "rating") {
+                      valA = ratings[a.name] || 0;
+                      valB = ratings[b.name] || 0;
+                    }
+                    return recipeSortOrder === "asc" ? valA - valB : valB - valA;
+                  });
+
+                  return (
+                    <>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+                        <div style={{ fontSize: 10, color: C.muted, fontWeight: 600, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "monospace" }}>
+                          🍽️ Suggested Recipes ({filteredRecipes.length} of {recipes.length})
+                        </div>
+                        
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ fontSize: 11, color: C.muted, fontWeight: 700 }}>Sort:</span>
+                          <select
+                            id="recipe-sort-select"
+                            value={recipeSortBy}
+                            onChange={(e) => setRecipeSortBy(e.target.value as any)}
+                            style={{
+                              background: C.white,
+                              border: `1px solid ${C.border}`,
+                              borderRadius: 8,
+                              padding: "4px 8px",
+                              fontSize: 11,
+                              fontWeight: 700,
+                              color: C.text,
+                              outline: "none",
+                              cursor: "pointer",
+                              boxShadow: "0 1px 2px rgba(0,0,0,0.02)"
+                            }}
+                          >
+                            <option value="missing">Best Match (Fewer Missing)</option>
+                            <option value="time">Cooking Time</option>
+                            <option value="calories">Calories</option>
+                            <option value="name">Alphabetical</option>
+                            <option value="rating">Rating</option>
+                          </select>
+                          
+                          <button
+                            id="recipe-sort-order-btn"
+                            onClick={() => setRecipeSortOrder(prev => prev === "asc" ? "desc" : "asc")}
+                            style={{
+                              background: C.white,
+                              border: `1px solid ${C.border}`,
+                              borderRadius: 8,
+                              width: 24,
+                              height: 24,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: 11,
+                              cursor: "pointer",
+                              color: C.text,
+                              boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+                            }}
+                            title={recipeSortOrder === "asc" ? "Ascending Order" : "Descending Order"}
+                          >
+                            {recipeSortOrder === "asc" ? "↑" : "↓"}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Interactive Search / Filter bar for Suggested Recipes */}
+                      <div style={{ 
+                        background: C.white, 
+                        border: `1px solid ${C.border}`, 
+                        borderRadius: 12, 
+                        display: "flex", 
+                        alignItems: "center", 
+                        padding: "0 12px", 
+                        marginBottom: 14, 
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.01)" 
+                      }}>
+                        <span style={{ color: C.muted, marginRight: 8, fontSize: 13 }}>🔍</span>
+                        <input 
+                          value={recipeSearchQuery} 
+                          onChange={e => setRecipeSearchQuery(e.target.value)} 
+                          placeholder="Filter suggestions by name, cuisine, or ingredient..." 
+                          className="placeholder:font-normal font-semibold focus:outline-hidden"
+                          style={{ flex: 1, border: "none", background: "none", fontSize: 12, color: C.text, padding: "10px 0", outline: "none" }} 
                         />
-                      ))}
-                    </div>
-                  </>
-                )}
+                        {recipeSearchQuery && (
+                          <button 
+                            onClick={() => setRecipeSearchQuery("")}
+                            style={{ background: "none", border: "none", cursor: "pointer", color: C.muted, fontSize: 14, fontWeight: 700, padding: "0 4px" }}
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+
+                      {sortedRecipes.length === 0 ? (
+                        <div style={{ textAlign: "center", padding: "30px 10px", color: C.muted }}>
+                          <div style={{ fontSize: 28, marginBottom: 8 }}>🔍</div>
+                          <div style={{ fontSize: 13, fontFamily: "'Playfair Display', serif", fontWeight: 700, color: C.text, marginBottom: 4 }}>No recipes match your filter</div>
+                          <div style={{ fontSize: 11, lineHeight: 1.4 }}>Try typing another search keyword or clear the filter query.</div>
+                        </div>
+                      ) : (
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12, marginBottom: 12 }}>
+                          {sortedRecipes.map(r => (
+                            <RecipeCard 
+                              key={r.id} 
+                              r={r} 
+                              isSaved={isSaved(r)} 
+                              toggleSave={() => handleToggleSave(r)} 
+                              onOpen={() => setSelectedRecipe(r)} 
+                              rating={ratings[r.name] || 0}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
 
                 {/* Empty Recipes state representation */}
                 {!loading && recipes.length === 0 && ings.length > 0 && (
@@ -1261,43 +1417,93 @@ export default function App() {
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.2 }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
                   <div>
                     <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, fontWeight: 850, color: C.text, margin: 0 }}>Shopping Ingredients</h3>
                     <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{cart.length} items · {checked.length} checked</div>
                   </div>
-                  <div style={{ display: "flex", gap: 6 }}>
+                  
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     {cart.length > 0 && (
-                      <button 
-                        id="copy-cart-btn"
-                        onClick={copyCartToClipboard}
-                        style={{
-                          background: cartCopied ? C.green : "#FAF6F0", 
-                          color: cartCopied ? C.white : C.text, 
-                          border: "1px solid #E5DCCF", 
-                          borderRadius: 8, 
-                          padding: "6px 10px", 
-                          fontSize: 10, 
-                          fontWeight: 700, 
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 4,
-                          transition: "all 0.15s"
-                        }}
-                      >
-                        📋 {cartCopied ? "Copied!" : "Copy List"}
-                      </button>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <span style={{ fontSize: 10, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>Sort:</span>
+                        <select
+                          id="cart-sort-select"
+                          value={cartSortBy}
+                          onChange={(e) => setCartSortBy(e.target.value as any)}
+                          style={{
+                            background: C.white,
+                            border: `1px solid ${C.border}`,
+                            borderRadius: 8,
+                            padding: "4px 8px",
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: C.text,
+                            outline: "none",
+                            cursor: "pointer",
+                            boxShadow: "0 1px 2px rgba(0,0,0,0.02)"
+                          }}
+                        >
+                          <option value="checked">Pending First</option>
+                          <option value="alphabetical">Alphabetical</option>
+                        </select>
+                        <button
+                          id="cart-sort-order-btn"
+                          onClick={() => setCartSortOrder(prev => prev === "asc" ? "desc" : "asc")}
+                          style={{
+                            background: C.white,
+                            border: `1px solid ${C.border}`,
+                            borderRadius: 8,
+                            width: 24,
+                            height: 24,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: 11,
+                            cursor: "pointer",
+                            color: C.text,
+                            boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+                          }}
+                          title={cartSortOrder === "asc" ? "Ascending Order" : "Descending Order"}
+                        >
+                          {cartSortOrder === "asc" ? "↑" : "↓"}
+                        </button>
+                      </div>
                     )}
-                    {checked.length > 0 && (
-                      <button 
-                        id="clear-checked-btn"
-                        onClick={clearChecked} 
-                        style={{ background: C.accent, color: C.white, border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 10, fontWeight: 700, cursor: "pointer" }}
-                      >
-                        Clear Checked ({checked.length})
-                      </button>
-                    )}
+
+                    <div style={{ display: "flex", gap: 6 }}>
+                      {cart.length > 0 && (
+                        <button 
+                          id="copy-cart-btn"
+                          onClick={copyCartToClipboard}
+                          style={{
+                            background: cartCopied ? C.green : "#FAF6F0", 
+                            color: cartCopied ? C.white : C.text, 
+                            border: "1px solid #E5DCCF", 
+                            borderRadius: 8, 
+                            padding: "6px 10px", 
+                            fontSize: 10, 
+                            fontWeight: 700, 
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
+                            transition: "all 0.15s"
+                          }}
+                        >
+                          📋 {cartCopied ? "Copied!" : "Copy List"}
+                        </button>
+                      )}
+                      {checked.length > 0 && (
+                        <button 
+                          id="clear-checked-btn"
+                          onClick={clearChecked} 
+                          style={{ background: C.accent, color: C.white, border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 10, fontWeight: 700, cursor: "pointer" }}
+                        >
+                          Clear Checked ({checked.length})
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -1417,54 +1623,222 @@ export default function App() {
                   </div>
                 )}
 
+                {cart.length > 0 && (
+                  <div style={{
+                    background: "#F0FDF4",
+                    border: "1px dashed #BBF7D0",
+                    borderRadius: 16,
+                    padding: 16,
+                    marginBottom: 16,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 12
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: 10, background: "#DCFCE7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
+                        🛒
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <h4 style={{ margin: 0, fontSize: 13, fontWeight: 750, color: "#166534" }}>Order Pending Ingredients</h4>
+                        <p style={{ margin: 0, fontSize: 11, color: "#15803D" }}>
+                          Connect your ingredients list directly to major online grocery markets to order items in bulk!
+                        </p>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      <a
+                        id="shop-instacart-btn"
+                        href={`https://www.instacart.com/store/s?k=${encodeURIComponent(cart.filter(item => !checked.includes(item)).join(", "))}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          textDecoration: "none",
+                          background: "#10B981",
+                          color: "#FFFFFF",
+                          border: "none",
+                          borderRadius: 8,
+                          padding: "8px 12px",
+                          fontSize: 11,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                          boxShadow: "0 1px 2px rgba(0,0,0,0.05)"
+                        }}
+                      >
+                        🥕 Shop Pending on Instacart
+                      </a>
+
+                      <a
+                        id="shop-amazon-btn"
+                        href={`https://www.amazon.com/s?k=${encodeURIComponent(cart.filter(item => !checked.includes(item)).join(" "))}&i=amazonfresh`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          textDecoration: "none",
+                          background: "#232F3E",
+                          color: "#FFFFFF",
+                          border: "none",
+                          borderRadius: 8,
+                          padding: "8px 12px",
+                          fontSize: 11,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                          boxShadow: "0 1px 2px rgba(0,0,0,0.05)"
+                        }}
+                      >
+                        📦 Shop Pending on Amazon Fresh
+                      </a>
+
+                      <a
+                        id="shop-walmart-btn"
+                        href={`https://www.walmart.com/search?q=${encodeURIComponent(cart.filter(item => !checked.includes(item)).join(" "))}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          textDecoration: "none",
+                          background: "#0071CE",
+                          color: "#FFFFFF",
+                          border: "none",
+                          borderRadius: 8,
+                          padding: "8px 12px",
+                          fontSize: 11,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                          boxShadow: "0 1px 2px rgba(0,0,0,0.05)"
+                        }}
+                      >
+                        💙 Shop Pending on Walmart
+                      </a>
+                    </div>
+                  </div>
+                )}
+
                 {cart.length === 0 ? (
                   <div style={{ textAlign: "center", padding: "48px 20px", color: C.muted }}>
                     <div style={{ fontSize: 44, marginBottom: 12 }}>🛒</div>
                     <div style={{ fontSize: 14, fontFamily: "'Playfair Display', serif", fontWeight: 700, color: C.text, marginBottom: 4 }}>Cart list is empty</div>
                     <div style={{ fontSize: 11, lineHeight: 1.4 }}>Open any generated recipe detail card and add missing items to cart.</div>
                   </div>
-                ) : (
-                  <div style={{ background: C.white, borderRadius: 16, border: `1px solid ${C.border}`, overflow: "hidden", boxShadow: "0 2px 10px rgba(0,0,0,0.02)" }}>
-                    {cart.map((item, i) => (
-                      <div 
-                        key={item} 
-                        onClick={() => toggleCheck(item)} 
-                        style={{
-                          display: "flex", 
-                          alignItems: "center", 
-                          gap: 12, 
-                          padding: "12px 14px",
-                          borderBottom: i < cart.length - 1 ? `1px solid ${C.border}` : "none",
-                          cursor: "pointer", 
-                          transition: "background 0.15s",
-                          background: checked.includes(item) ? "#FAF8F4" : C.white,
-                        }}
-                      >
+                ) : (() => {
+                  const sortedCart = [...cart].sort((a, b) => {
+                    if (cartSortBy === "checked") {
+                      const isAChecked = checked.includes(a);
+                      const isBChecked = checked.includes(b);
+                      if (isAChecked && !isBChecked) return cartSortOrder === "asc" ? 1 : -1;
+                      if (!isAChecked && isBChecked) return cartSortOrder === "asc" ? -1 : 1;
+                    }
+                    // alphabetical within status OR if sorting alphabetically globally
+                    return cartSortOrder === "asc" ? a.localeCompare(b) : b.localeCompare(a);
+                  });
+
+                  return (
+                    <div style={{ background: C.white, borderRadius: 16, border: `1px solid ${C.border}`, overflow: "hidden", boxShadow: "0 2px 10px rgba(0,0,0,0.02)" }}>
+                      {sortedCart.map((item, i) => (
                         <div 
+                          key={item} 
+                          onClick={() => toggleCheck(item)} 
                           style={{
-                            width: 18, 
-                            height: 18, 
-                            borderRadius: 6, 
-                            border: `2px solid ${checked.includes(item) ? C.green : "#CBD5E1"}`,
-                            background: checked.includes(item) ? C.green : "none",
                             display: "flex", 
                             alignItems: "center", 
-                            justifyContent: "center", 
-                            flexShrink: 0, 
-                            transition: "all 0.15s",
+                            gap: 12, 
+                            padding: "10px 14px",
+                            borderBottom: i < sortedCart.length - 1 ? `1px solid ${C.border}` : "none",
+                            cursor: "pointer", 
+                            transition: "background 0.15s",
+                            background: checked.includes(item) ? "#FAF8F4" : C.white,
                           }}
                         >
-                          {checked.includes(item) && (
-                            <span style={{ color: C.white, fontSize: 11, fontWeight: 900 }}>✓</span>
-                          )}
+                          <div 
+                            style={{
+                              width: 18, 
+                              height: 18, 
+                              borderRadius: 6, 
+                              border: `2px solid ${checked.includes(item) ? C.green : "#CBD5E1"}`,
+                              background: checked.includes(item) ? C.green : "none",
+                              display: "flex", 
+                              alignItems: "center", 
+                              justifyContent: "center", 
+                              flexShrink: 0, 
+                              transition: "all 0.15s",
+                            }}
+                          >
+                            {checked.includes(item) && (
+                              <span style={{ color: C.white, fontSize: 11, fontWeight: 900 }}>✓</span>
+                            )}
+                          </div>
+                          
+                          <span style={{ fontSize: 13, color: checked.includes(item) ? C.muted : C.text, textDecoration: checked.includes(item) ? "line-through" : "none", flex: 1, textTransform: "capitalize", fontWeight: 600 }}>
+                            {item}
+                          </span>
+
+                          {/* Quick Market Shortcuts */}
+                          <div 
+                            style={{ 
+                              display: "flex", 
+                              alignItems: "center", 
+                              gap: 4 
+                            }}
+                            onClick={(e) => e.stopPropagation()} // Prevent completing item checkbox on badge click
+                          >
+                            <a
+                              href={`https://www.instacart.com/store/s?k=${encodeURIComponent(item)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{
+                                textDecoration: "none",
+                                fontSize: 10,
+                                background: "#E8F5E9",
+                                color: "#2E7D32",
+                                border: "1px solid #A5D6A7",
+                                borderRadius: 4,
+                                padding: "2px 6px",
+                                fontWeight: 700,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                transition: "transform 0.1s"
+                              }}
+                              title={`Buy "${item}" on Instacart`}
+                              className="hover:scale-105 active:scale-95"
+                            >
+                              🥕 Buy
+                            </a>
+                            <a
+                              href={`https://www.amazon.com/s?k=${encodeURIComponent(item)}&i=amazonfresh`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{
+                                textDecoration: "none",
+                                fontSize: 10,
+                                background: "#FFF3E0",
+                                color: "#E65100",
+                                border: "1px solid #FFCC80",
+                                borderRadius: 4,
+                                padding: "2px 6px",
+                                fontWeight: 700,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                transition: "transform 0.1s"
+                              }}
+                              title={`Buy "${item}" on Amazon`}
+                              className="hover:scale-105 active:scale-95"
+                            >
+                              📦 Fresh
+                            </a>
+                          </div>
                         </div>
-                        <span style={{ fontSize: 13, color: checked.includes(item) ? C.muted : C.text, textDecoration: checked.includes(item) ? "line-through" : "none", flex: 1, textTransform: "capitalize", fontWeight: 600 }}>
-                          {item}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                      ))}
+                    </div>
+                  );
+                })()}
               </motion.div>
             )}
 
