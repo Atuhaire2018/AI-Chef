@@ -20,6 +20,7 @@ import {
   Star
 } from "lucide-react";
 import { AIRecipe } from "../types";
+import { t } from "../data/languages";
 
 interface RecipeDetailModalProps {
   recipe: AIRecipe;
@@ -33,6 +34,7 @@ interface RecipeDetailModalProps {
   onLogCooked: () => void;
   cookCount: number;
   onAddToTasks?: (title: string, notes: string) => Promise<any>;
+  currentLanguage: string;
 }
 
 export default function RecipeDetailModal({
@@ -47,6 +49,7 @@ export default function RecipeDetailModal({
   onLogCooked,
   cookCount,
   onAddToTasks,
+  currentLanguage,
 }: RecipeDetailModalProps) {
   const [checkedIngredients, setCheckedIngredients] = useState<Record<string, boolean>>({});
   const [completedSteps, setCompletedSteps] = useState<Record<number, boolean>>({});
@@ -54,6 +57,10 @@ export default function RecipeDetailModal({
   const [hoveredRating, setHoveredRating] = useState<number | null>(null);
   const [exportingTasks, setExportingTasks] = useState(false);
   const [exportedSuccess, setExportedSuccess] = useState(false);
+
+  const tr = (key: string, fallback?: string): string => {
+    return t(key, currentLanguage, fallback);
+  };
 
   const handleExportToTasks = async () => {
     if (!onAddToTasks) return;
@@ -120,7 +127,7 @@ export default function RecipeDetailModal({
               className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 text-[#FAF8F4] transition-all border border-white/10"
               title="Copy recipe details to clipboard"
             >
-              {copiedLink ? <span className="text-xs font-bold text-amber-300 font-mono">Copied!</span> : <Share2 className="w-4 h-4" />}
+              {copiedLink ? <span className="text-xs font-bold text-amber-300 font-mono">{tr("copied", "Copied!")}</span> : <Share2 className="w-4 h-4" />}
             </button>
             <button
               id={`detail-fav-btn-${recipe.id}`}
@@ -148,10 +155,10 @@ export default function RecipeDetailModal({
           <div className="space-y-2 max-w-[85%]">
             <div className="text-[52px] leading-none mb-1 select-none">{recipe.emoji}</div>
             <h2 className="text-xl sm:text-2xl font-serif font-black leading-tight text-white tracking-normal font-bold">
-              {recipe.name}
+              {tr(recipe.name, recipe.name)}
             </h2>
             <p className="text-xs sm:text-sm text-[#FAF8F4]/80 italic max-w-lg font-medium">
-              "{recipe.desc}"
+              "{tr(recipe.desc, recipe.desc)}"
             </p>
           </div>
 
@@ -166,25 +173,25 @@ export default function RecipeDetailModal({
                 title={`Start ${recipe.time} min kitchen timer!`}
               >
                 <Clock className="w-3.5 h-3.5 text-white animate-bounce" />
-                <span>⏱️ Start timer ({recipe.time}m)</span>
+                <span>⏱️ {tr("timer", "Timer")} ({recipe.time}{tr("minutes", "m")})</span>
               </button>
             ) : (
               <div className="flex items-center gap-1.5 px-3 py-1 bg-white/10 border border-white/10 rounded-full text-xs font-semibold">
                 <Clock className="w-3.5 h-3.5 text-amber-400" />
-                <span>⏱ {recipe.time} Min</span>
+                <span>⏱ {recipe.time} {tr("minutes", "Min")}</span>
               </div>
             )}
             <div className="flex items-center gap-1.5 px-3 py-1 bg-white/10 border border-white/10 rounded-full text-xs font-semibold">
               <Gauge className="w-3.5 h-3.5 text-emerald-400" />
-              <span>👨‍🍳 {recipe.difficulty}</span>
+              <span>👨‍🍳 {tr(recipe.difficulty, recipe.difficulty)}</span>
             </div>
             <div className="flex items-center gap-1.5 px-3 py-1 bg-white/10 border border-white/10 rounded-full text-xs font-semibold">
               <Globe className="w-3.5 h-3.5 text-sky-400" />
-              <span>🌍 {recipe.cuisine}</span>
+              <span>🌍 {tr(recipe.cuisine, recipe.cuisine)}</span>
             </div>
             <div className="flex items-center gap-1.5 px-3 py-1 bg-white/10 border border-white/10 rounded-full text-xs font-semibold">
               <Users className="w-3.5 h-3.5 text-teal-400" />
-              <span>👥 {recipe.servings} Servings</span>
+              <span>👥 {recipe.servings} {tr("servings", "Servings")}</span>
             </div>
           </div>
         </div>
@@ -197,22 +204,22 @@ export default function RecipeDetailModal({
             <div className="space-y-1">
               <h4 className="text-sm font-serif font-black text-slate-900 flex items-center gap-1.5">
                 <Star className="w-4 h-4 text-amber-500 fill-amber-500 shrink-0" />
-                <span>My Culinary Rating</span>
+                <span>{tr("rating", "My Culinary Rating")}</span>
               </h4>
               <p className="text-xs text-slate-500 font-medium font-sans">
                 {userRating > 0 ? (
                   <>
-                    You scored this:{" "}
+                    {tr("youScored", "You scored this:")}{" "}
                     <span className="font-bold text-[#D95F2B]">
-                      {userRating === 1 && "⭐ Meh"}
-                      {userRating === 2 && "⭐⭐ Okay"}
-                      {userRating === 3 && "⭐⭐⭐ Delicious"}
-                      {userRating === 4 && "⭐⭐⭐⭐ Highly Recommend!"}
-                      {userRating === 5 && "⭐⭐⭐⭐⭐ Outstanding Masterpiece!"}
+                      {userRating === 1 && tr("meh", "⭐ Meh")}
+                      {userRating === 2 && tr("okay", "⭐⭐ Okay")}
+                      {userRating === 3 && tr("delicious", "⭐⭐⭐ Delicious")}
+                      {userRating === 4 && tr("highlyRecommend", "⭐⭐⭐⭐ Highly Recommend!")}
+                      {userRating === 5 && tr("masterpiece", "⭐⭐⭐⭐⭐ Outstanding Masterpiece!")}
                     </span>
                   </>
                 ) : (
-                  "How did this turn out? Give your kitchen result a rating!"
+                  tr("ratingPrompt", "How did this turn out? Give your kitchen result a rating!")
                 )}
               </p>
             </div>
@@ -249,7 +256,7 @@ export default function RecipeDetailModal({
                   className="text-xs font-bold text-slate-400 hover:text-orange-500 underline cursor-pointer duration-150 transition-colors ml-2"
                   title="Clear my rating"
                 >
-                  Clear
+                  {tr("clearAll", "Clear")}
                 </button>
               )}
             </div>
@@ -260,18 +267,18 @@ export default function RecipeDetailModal({
             <div className="space-y-1">
               <h4 className="text-sm font-serif font-black text-slate-900 flex items-center gap-1.5">
                 <span className="text-sm">🍳</span>
-                <span>My Cooking Log</span>
+                <span>{tr("myCookingLog", "My Cooking Log")}</span>
               </h4>
               <p className="text-xs text-slate-500 font-medium font-sans">
                 {cookCount > 0 ? (
                   <>
-                    You prepared this dish{" "}
+                    {tr("youPrepared", "You prepared this dish")}{" "}
                     <span className="font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
-                      {cookCount} {cookCount === 1 ? "time" : "times"}
+                      {cookCount} {cookCount === 1 ? tr("time", "time") : tr("times", "times")}
                     </span>
                   </>
                 ) : (
-                  "Not prepared yet. Mark as cooked to record your kitchen log history!"
+                  tr("notPreparedYet", "Not prepared yet. Mark as cooked to record your kitchen log history!")
                 )}
               </p>
             </div>
@@ -283,7 +290,7 @@ export default function RecipeDetailModal({
               className="px-4 py-2 bg-[#2B6B44] hover:bg-[#1E4A2E] text-white text-xs font-bold rounded-xl active:scale-95 transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer shrink-0"
               title="Add a culinary entry for this recipe to your history journal!"
             >
-              <span>🍳 Cooked this!</span>
+              <span>🍳 {tr("cookedThis", "Cooked this!")}</span>
             </button>
           </div>
           
@@ -291,11 +298,11 @@ export default function RecipeDetailModal({
           <div className="bg-[#FFF9F2] border border-amber-200/60 rounded-2xl p-4.5 space-y-4 shadow-xs">
             <div className="flex items-center gap-2 text-[#D95F2B] font-serif font-black text-sm">
               <Sparkles className="w-4 h-4" />
-              <span>Chef's Recipe Overview</span>
+              <span>{tr("recipeOverview", "Chef's Recipe Overview")}</span>
             </div>
             
             <p className="text-xs sm:text-sm text-slate-700 leading-relaxed font-sans">
-              {recipe.overview || recipe.desc || "A beautifully curated gourmet dish centered on flavor balance and peak execution guidelines crafted by our virtual Chef Gemini."}
+              {tr(recipe.overview || recipe.desc || "A beautifully curated gourmet dish centered on flavor balance and peak execution guidelines crafted by our virtual Chef Gemini.")}
             </p>
 
             <div className="h-px bg-amber-100" />
@@ -307,7 +314,7 @@ export default function RecipeDetailModal({
                   <DollarSign className="w-4 h-4" />
                 </div>
                 <div>
-                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider font-mono">Est. Market Price</div>
+                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider font-mono">{tr("estPrice", "Est. Market Price")}</div>
                   <div className="text-sm font-serif font-black text-[#2B6B44]">
                     {recipe.marketPrice || "$4.50 - $6.50"}
                   </div>
@@ -329,7 +336,7 @@ export default function RecipeDetailModal({
                   >
                     <span>🗓️</span>
                     <span>
-                      {exportingTasks ? "Exporting..." : exportedSuccess ? "✓ Exported!" : "Export to Tasks"}
+                      {exportingTasks ? tr("exporting", "Exporting...") : exportedSuccess ? tr("exported", "✓ Exported!") : tr("exportTasks", "Export to Tasks")}
                     </span>
                   </button>
                 )}
@@ -341,7 +348,7 @@ export default function RecipeDetailModal({
                   className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-[#FF0000] hover:bg-[#CC0000] text-white text-xs font-bold rounded-xl active:scale-95 transition-all shadow-sm"
                 >
                   <Youtube className="w-4 h-4 stroke-[2.5]" />
-                  <span>Watch YouTube Cooking Guide</span>
+                  <span>{tr("watchYoutube", "Watch YouTube Cooking Guide")}</span>
                 </a>
               </div>
             </div>
@@ -352,30 +359,30 @@ export default function RecipeDetailModal({
             <div className="bg-white border border-amber-100 rounded-2xl p-4.5 space-y-3.5 shadow-xs">
               <div className="flex items-center justify-between border-b pb-1.5 border-slate-100">
                 <span className="text-xs font-bold text-slate-800 uppercase tracking-wider font-mono flex items-center gap-1.5">
-                  🥗 Nutritional Facts <span className="text-[10px] text-slate-400 normal-case font-normal font-sans">(estimated per serving)</span>
+                  🥗 {tr("nutFacts", "Nutritional Facts")} <span className="text-[10px] text-slate-400 normal-case font-normal font-sans">({tr("perServing", "estimated per serving")})</span>
                 </span>
-                <span className="text-[11px] text-[#D95F2B] font-bold">Chef Gemini Verified</span>
+                <span className="text-[11px] text-[#D95F2B] font-bold">{tr("geminiVerified", "Chef Gemini Verified")}</span>
               </div>
               <div className="grid grid-cols-4 gap-2.5 text-center">
                 <div className="bg-[#FAF8F4] p-2.5 rounded-xl border border-amber-100/50">
-                  <div className="text-[10px] text-slate-400 font-bold mb-0.5">Calories</div>
+                  <div className="text-[10px] text-slate-400 font-bold mb-0.5">{tr("calories", "Calories")}</div>
                   <div className="text-sm sm:text-base font-serif font-black text-slate-900">{recipe.nutritional.calories}</div>
                   <div className="text-[9px] text-slate-400 font-mono">kcal</div>
                 </div>
                 <div className="bg-[#FAF8F4] p-2.5 rounded-xl border border-amber-100/50">
-                  <div className="text-[10px] text-slate-400 font-bold mb-0.5">Protein</div>
+                  <div className="text-[10px] text-slate-400 font-bold mb-0.5">{tr("protein", "Protein")}</div>
                   <div className="text-sm sm:text-base font-serif font-black text-[#2B6B44]">{recipe.nutritional.protein}</div>
-                  <div className="text-[9px] text-slate-400 font-mono">grams</div>
+                  <div className="text-[9px] text-slate-400 font-mono">{tr("grams", "grams")}</div>
                 </div>
                 <div className="bg-[#FAF8F4] p-2.5 rounded-xl border border-amber-100/50">
-                  <div className="text-[10px] text-slate-400 font-bold mb-0.5">Carbs</div>
+                  <div className="text-[10px] text-slate-400 font-bold mb-0.5">{tr("carbs", "Carbs")}</div>
                   <div className="text-sm sm:text-base font-serif font-black text-[#D95F2B]">{recipe.nutritional.carbs}</div>
-                  <div className="text-[9px] text-slate-400 font-mono">grams</div>
+                  <div className="text-[9px] text-slate-400 font-mono">{tr("grams", "grams")}</div>
                 </div>
                 <div className="bg-[#FAF8F4] p-2.5 rounded-xl border border-amber-100/50">
-                  <div className="text-[10px] text-slate-400 font-bold mb-0.5">Fat</div>
+                  <div className="text-[10px] text-slate-400 font-bold mb-0.5">{tr("fat", "Fat")}</div>
                   <div className="text-sm sm:text-base font-serif font-black text-amber-800">{recipe.nutritional.fat}</div>
-                  <div className="text-[9px] text-slate-400 font-mono">grams</div>
+                  <div className="text-[9px] text-slate-400 font-mono">{tr("grams", "grams")}</div>
                 </div>
               </div>
             </div>
@@ -389,9 +396,9 @@ export default function RecipeDetailModal({
                   <ShoppingCart className="w-4.5 h-4.5" />
                 </div>
                 <div className="space-y-0.5">
-                  <h4 className="text-xs sm:text-sm font-bold text-slate-800">Need ingredients?</h4>
+                  <h4 className="text-xs sm:text-sm font-bold text-slate-800">{tr("needIngredients", "Need ingredients?")}</h4>
                   <p className="text-[11px] text-slate-500">
-                    You are missing <span className="font-bold text-orange-600">{recipe.missing.length} ingredients</span> for this dish. Add them straight to your shopping cart!
+                    {tr("youAreMissing", "You are missing")} <span className="font-bold text-orange-600">{recipe.missing.length} {tr("ingredients", "ingredients")}</span> {tr("forThisDish", "for this dish. Add them straight to your shopping cart!")}
                   </p>
                 </div>
               </div>
@@ -404,7 +411,7 @@ export default function RecipeDetailModal({
                 className="w-full sm:w-auto bg-[#D95F2B] hover:bg-[#b04a1f] text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 shrink-0 shadow-sm active:scale-95 cursor-pointer"
               >
                 <ShoppingCart className="w-3.5 h-3.5" />
-                Add Missing to Cart
+                {tr("addToCart", "Add to Cart")}
               </button>
             </div>
           )}
@@ -414,18 +421,18 @@ export default function RecipeDetailModal({
             {/* You Have group */}
             <div className="bg-[#E6F4EC] border border-emerald-100 rounded-2xl p-4 space-y-3">
               <span className="text-[11px] bg-[#2B6B44]/10 text-[#2B6B44] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider font-mono">
-                ✅ You Have in Pantry
+                ✅ {tr("inStock", "In Stock")}
               </span>
               <div className="space-y-1.5">
                 {recipe.used && recipe.used.length > 0 ? (
                   recipe.used.map((item) => (
                     <div key={item} className="flex items-center gap-2 text-sm font-semibold text-[#2B6B44]">
                       <Check className="w-4 h-4 shrink-0 stroke-[3]" />
-                      <span className="truncate capitalize">{item}</span>
+                      <span className="truncate capitalize">{tr(item, item)}</span>
                     </div>
                   ))
                 ) : (
-                  <p className="text-xs text-slate-500 italic pr-3">No matched items.</p>
+                  <p className="text-xs text-slate-500 italic pr-3">{tr("noMatched", "No matched items.")}</p>
                 )}
               </div>
             </div>
@@ -433,18 +440,18 @@ export default function RecipeDetailModal({
             {/* You Need group */}
             <div className="bg-[#FFF1EA] border border-orange-100 rounded-2xl p-4 space-y-3">
               <span className="text-[11px] bg-[#D95F2B]/10 text-[#D95F2B] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider font-mono">
-                🛒 You Need to Fetch
+                🛒 {tr("outOfStock", "Missing / Need to Get")}
               </span>
               <div className="space-y-1.5">
                 {recipe.missing && recipe.missing.length > 0 ? (
                   recipe.missing.map((item) => (
                     <div key={item} className="flex items-center gap-2 text-sm font-semibold text-[#D95F2B]">
                       <ShoppingCart className="w-3.5 h-3.5 shrink-0" />
-                      <span className="truncate capitalize">{item}</span>
+                      <span className="truncate capitalize">{tr(item, item)}</span>
                     </div>
                   ))
                 ) : (
-                  <p className="text-xs text-slate-500 italic">You have everything in stock!</p>
+                  <p className="text-xs text-slate-500 italic">{tr("allInStock", "You have everything in stock!")}</p>
                 )}
               </div>
             </div>
@@ -454,7 +461,7 @@ export default function RecipeDetailModal({
           <div className="space-y-3">
             <h3 className="font-serif text-lg font-bold text-slate-900 border-b pb-2 border-slate-200/60 flex items-center gap-2">
               <BookOpen className="w-5 h-5 text-[#1E3D2F]" />
-              Complete Ingredients Checklist
+              {tr("completeChecklist", "Complete Ingredients Checklist")}
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {recipe.allIngs.map((ing) => {
@@ -477,7 +484,7 @@ export default function RecipeDetailModal({
                         {isSelected && <Check className="w-2.5 h-2.5 stroke-[4]" />}
                       </span>
                       <span className={`font-semibold capitalize truncate ${isSelected ? "line-through opacity-60" : ""}`}>
-                        {ing}
+                        {tr(ing, ing)}
                       </span>
                     </div>
                   </button>
@@ -491,11 +498,11 @@ export default function RecipeDetailModal({
             <div className="flex items-center justify-between border-b pb-2 border-slate-200/60">
               <h3 className="font-serif text-lg font-bold text-slate-900 flex items-center gap-2">
                 <CheckCircle className="w-5 h-5 text-[#1E3D2F]" />
-                How to Cook Interactive Steps
+                {tr("howToCook", "How to Cook Interactive Steps")}
               </h3>
               {progressPercentage > 0 && (
                 <span className="text-xs font-mono font-bold bg-[#E6F4EC] text-[#2B6B44] px-2.5 py-1 rounded-full">
-                  {progressPercentage}% Completed
+                  {progressPercentage}% {tr("completed", "Completed")}
                 </span>
               )}
             </div>
@@ -532,7 +539,7 @@ export default function RecipeDetailModal({
                       {isStepDone ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : index + 1}
                     </button>
                     <p className={`text-sm leading-relaxed ${isStepDone ? "line-through opacity-75" : ""}`}>
-                      {step}
+                      {tr(step, step)}
                     </p>
                   </div>
                 );
@@ -544,14 +551,14 @@ export default function RecipeDetailModal({
         {/* Footer controls */}
         <div className="shrink-0 p-4 bg-[#EDE8DE] border-t border-amber-100/55 flex justify-between items-center text-xs font-bold">
           <span className="text-slate-500 font-serif italic">
-            Chef Gemini AI Curated Kitchen helper
+            {tr("chefHelper", "Chef Gemini AI Curated Kitchen helper")}
           </span>
           <button
             type="button"
             onClick={onClose}
             className="px-4.5 py-2 bg-[#1E3D2F] hover:bg-[#152c22] text-[#FAF8F4] rounded-lg transition-colors active:scale-95"
           >
-            Finished Cooking
+            {tr("finishedCooking", "Finished Cooking")}
           </button>
         </div>
       </motion.div>

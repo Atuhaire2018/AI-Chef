@@ -7,7 +7,7 @@ import { auth, googleAuthProvider } from "./lib/firebase";
 import { onAuthStateChanged, signInWithPopup, signOut, GoogleAuthProvider } from "firebase/auth";
 import { LogIn, LogOut, RefreshCw, Eye, Trash2, CalendarRange, Sparkles, ClipboardCheck, Wifi, WifiOff, Settings } from "lucide-react";
 import { CURATED_RECIPES } from "./data/curatedRecipes";
-import { generate1000Languages, LOCALIZATIONS } from "./data/languages";
+import { generate1000Languages, LOCALIZATIONS, t as globalT } from "./data/languages";
 
 const THEMES = {
   forest: {
@@ -149,9 +149,8 @@ export default function App() {
   const C = THEMES[currentTheme as keyof typeof THEMES] || THEMES.forest;
 
   // Translation helper
-  const t = (key: string): string => {
-    const langDict = LOCALIZATIONS[currentLanguage] || LOCALIZATIONS.en;
-    return langDict[key] || LOCALIZATIONS.en[key] || key;
+  const t = (key: string, fallbackText?: string): string => {
+    return globalT(key, currentLanguage, fallbackText);
   };
 
   const allLanguages = React.useMemo(() => generate1000Languages(), []);
@@ -3088,6 +3087,7 @@ export default function App() {
             cookCount={getCookCount(selectedRecipe.name)}
             onAddToTasks={handleAddRecipeToGoogleTasks}
             onClose={() => setSelectedRecipe(null)}
+            currentLanguage={currentLanguage}
           />
         )}
       </AnimatePresence>
