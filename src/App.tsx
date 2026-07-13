@@ -5,20 +5,89 @@ import RecipeDetailModal from "./components/RecipeDetailModal";
 import { alarmSoundEngine } from "./utils/audio";
 import { auth, googleAuthProvider } from "./lib/firebase";
 import { onAuthStateChanged, signInWithPopup, signOut, GoogleAuthProvider } from "firebase/auth";
-import { LogIn, LogOut, RefreshCw, Eye, Trash2, CalendarRange, Sparkles, ClipboardCheck } from "lucide-react";
+import { LogIn, LogOut, RefreshCw, Eye, Trash2, CalendarRange, Sparkles, ClipboardCheck, Wifi, WifiOff, Settings } from "lucide-react";
+import { CURATED_RECIPES } from "./data/curatedRecipes";
+import { generate1000Languages, LOCALIZATIONS } from "./data/languages";
 
-const C = {
-  primary: "#1E3D2F",
-  accent: "#D95F2B",
-  white: "#FFFFFF",
-  bg: "#FAF8F4",
-  border: "#EEDECA",
-  text: "#1E293B",
-  muted: "#64748B",
-  chip: "#F1F5F9",
-  lightGreen: "#E6F4EC",
-  green: "#2B6B44",
-  orange: "#FFF1EA"
+const THEMES = {
+  forest: {
+    primary: "#1E3D2F",
+    accent: "#D95F2B",
+    white: "#FFFFFF",
+    bg: "#FAF8F4",
+    border: "#EEDECA",
+    text: "#1E293B",
+    muted: "#64748B",
+    chip: "#F1F5F9",
+    lightGreen: "#E6F4EC",
+    green: "#2B6B44",
+    orange: "#FFF1EA"
+  },
+  slate: {
+    primary: "#1E293B",
+    accent: "#3B82F6",
+    white: "#FFFFFF",
+    bg: "#F8FAFC",
+    border: "#CBD5E1",
+    text: "#0F172A",
+    muted: "#64748B",
+    chip: "#F1F5F9",
+    lightGreen: "#DBEAFE",
+    green: "#10B981",
+    orange: "#EFF6FF"
+  },
+  charcoal: {
+    primary: "#111827",
+    accent: "#F59E0B",
+    white: "#1F2937",
+    bg: "#111827",
+    border: "#374151",
+    text: "#F9FAFB",
+    muted: "#9CA3AF",
+    chip: "#374151",
+    lightGreen: "#1F2937",
+    green: "#10B981",
+    orange: "#374151"
+  },
+  terracotta: {
+    primary: "#7C2D12",
+    accent: "#EA580C",
+    white: "#FFFFFF",
+    bg: "#FFFBEB",
+    border: "#FED7AA",
+    text: "#431407",
+    muted: "#78350F",
+    chip: "#FFEDD5",
+    lightGreen: "#FEF3C7",
+    green: "#16A34A",
+    orange: "#FFF7ED"
+  },
+  lavender: {
+    primary: "#4C1D95",
+    accent: "#EC4899",
+    white: "#FFFFFF",
+    bg: "#FAF5FF",
+    border: "#E9D5FF",
+    text: "#1E1B4B",
+    muted: "#6B21A8",
+    chip: "#F3E8FF",
+    lightGreen: "#FDF2F8",
+    green: "#10B981",
+    orange: "#FDF2F8"
+  },
+  solar: {
+    primary: "#991B1B",
+    accent: "#F59E0B",
+    white: "#FFFFFF",
+    bg: "#FFF5F5",
+    border: "#FECACA",
+    text: "#7F1D1D",
+    muted: "#B91C1C",
+    chip: "#FEE2E2",
+    lightGreen: "#FEF3C7",
+    green: "#10B981",
+    orange: "#FFFBEB"
+  }
 };
 
 const POPULAR = [
@@ -69,6 +138,24 @@ function parseAIRecipes(rawRecipes: any[]): AIRecipe[] {
 }
 
 export default function App() {
+  const [currentTheme, setCurrentTheme] = useState<string>(() => {
+    return localStorage.getItem("pantry_theme") || "forest";
+  });
+  const [currentLanguage, setCurrentLanguage] = useState<string>(() => {
+    return localStorage.getItem("pantry_language") || "en";
+  });
+  const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
+
+  const C = THEMES[currentTheme as keyof typeof THEMES] || THEMES.forest;
+
+  // Translation helper
+  const t = (key: string): string => {
+    const langDict = LOCALIZATIONS[currentLanguage] || LOCALIZATIONS.en;
+    return langDict[key] || LOCALIZATIONS.en[key] || key;
+  };
+
+  const allLanguages = React.useMemo(() => generate1000Languages(), []);
+
   const [ings, setIngs] = useState<string[]>([]);
   const [input, setInput] = useState<string>("");
   const [filters, setFilters] = useState<FilterState>({
@@ -128,6 +215,30 @@ export default function App() {
   // Cart copied states
   const [cartCopied, setCartCopied] = useState<boolean>(false);
   const [recipeSearchQuery, setRecipeSearchQuery] = useState<string>("");
+
+  // Offline Mode States
+  const [isOffline, setIsOffline] = useState<boolean>(() => typeof navigator !== "undefined" ? !navigator.onLine : false);
+  const [forceOffline, setForceOffline] = useState<boolean>(false);
+  const activeOffline = isOffline || forceOffline;
+
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (activeOffline && recipeEngine === "creative") {
+      setRecipeEngine("instant");
+    }
+  }, [activeOffline, recipeEngine]);
 
   // Suggested Recipes (AI Chef Section) Sorting State
   const [recipeSortBy, setRecipeSortBy] = useState<"missing" | "time" | "calories" | "name" | "rating">(() => {
@@ -603,6 +714,137 @@ export default function App() {
     }
   };
 
+  // Local matching function for Offline Mode
+  const findRecipesOfflineLocal = (userIngs: string[], activeFilters: FilterState) => {
+    const cleanUserIngs = userIngs.map(i => i.toLowerCase().trim()).filter(i => i.length >= 2);
+    
+    const scored = CURATED_RECIPES.map((recipe) => {
+      const used: string[] = [];
+      const missing: string[] = [];
+
+      for (const ingLine of recipe.allIngs) {
+        const lowerIng = ingLine.toLowerCase();
+        
+        // Match criteria: keyword matches or substring overlap
+        const matchByKeyword = recipe.keywords ? recipe.keywords.some(kw => {
+          const inLine = lowerIng.includes(kw);
+          const userHas = cleanUserIngs.some(ui => ui.includes(kw) || kw.includes(ui));
+          return inLine && userHas;
+        }) : false;
+
+        const matchBySubstring = cleanUserIngs.some(ui => lowerIng.includes(ui) || ui.includes(lowerIng));
+
+        if (matchByKeyword || matchBySubstring) {
+          used.push(ingLine);
+        } else {
+          missing.push(ingLine);
+        }
+      }
+
+      // Calculate dynamic overlapping rates
+      const usedCount = used.length;
+      const missingCount = missing.length;
+      const matchRatio = usedCount / recipe.allIngs.length;
+
+      // Custom diet verification heuristics
+      const lowerName = recipe.name.toLowerCase();
+      const lowerDesc = recipe.desc.toLowerCase();
+      const lowerCuisine = recipe.cuisine.toLowerCase();
+      const fullText = (recipe.allIngs.join(" ") + " " + lowerName + " " + lowerDesc + " " + lowerCuisine).toLowerCase();
+
+      const hasMeat = ["chicken", "beef", "pork", "sausage", "bacon", "salmon", "fish", "cod", "shrimp", "tuna", "pork chop", "stewing beef"].some(x => fullText.includes(x));
+      const hasDairyOrEgg = ["milk", "cream", "butter", "cheese", "egg", "yogurt", "cheddar", "mozzarella", "feta", "parmesan"].some(x => fullText.includes(x));
+      const hasGluten = ["flour", "bread", "toast", "dough", "pizza", "pita", "flatbread", "pancake", "pancakes", "penne", "pasta", "spaghetti"].some(x => fullText.includes(x));
+      const hasKetoVeto = ["potato", "potatoes", "rice", "oats", "sugar", "syrup", "flour", "bread", "toast", "dough", "pizza", "pita", "flatbread", "pancake", "pancakes", "penne", "pasta", "spaghetti"].some(x => fullText.includes(x));
+
+      let isDietMatched = true;
+      if (activeFilters && activeFilters.dietary && activeFilters.dietary.length > 0) {
+        for (const diet of activeFilters.dietary) {
+          const dLower = diet.toLowerCase();
+          if (dLower.includes("vegetarian") && hasMeat) {
+            isDietMatched = false;
+          } else if (dLower.includes("vegan") && (hasMeat || hasDairyOrEgg)) {
+            isDietMatched = false;
+          } else if (dLower.includes("gluten") && hasGluten) {
+            isDietMatched = false;
+          } else if (dLower.includes("keto") && hasKetoVeto) {
+            isDietMatched = false;
+          }
+        }
+      }
+
+      let isCuisineMatched = true;
+      if (activeFilters && activeFilters.cuisine && activeFilters.cuisine !== "Any") {
+        isCuisineMatched = lowerCuisine.includes(activeFilters.cuisine.toLowerCase()) || lowerName.includes(activeFilters.cuisine.toLowerCase());
+      }
+
+      let isTimeMatched = true;
+      if (activeFilters && activeFilters.time) {
+        isTimeMatched = recipe.time <= Number(activeFilters.time);
+      }
+
+      let isDifficultyMatched = true;
+      if (activeFilters && activeFilters.difficulty) {
+        const reqDiff = activeFilters.difficulty.toLowerCase();
+        isDifficultyMatched = recipe.difficulty.toLowerCase() === reqDiff;
+      }
+
+      const nameMatch = cleanUserIngs.some(ui => lowerName.includes(ui) || ui.includes(lowerName));
+      const cuisineMatch = cleanUserIngs.some(ui => lowerCuisine.includes(ui) || ui.includes(lowerCuisine));
+
+      return {
+        recipe: {
+          ...recipe,
+          used,
+          missing
+        },
+        usedCount,
+        missingCount,
+        matchRatio,
+        nameMatch,
+        cuisineMatch,
+        isDietMatched,
+        isCuisineMatched,
+        isTimeMatched,
+        isDifficultyMatched
+      };
+    });
+
+    // Filter based on criteria, fall back gracefully to all if filters are too restrictive
+    let filtered = scored.filter(s => s.isDietMatched && s.isCuisineMatched && s.isTimeMatched && s.isDifficultyMatched);
+    if (filtered.length === 0) {
+      // Fall back to just diet matched
+      filtered = scored.filter(s => s.isDietMatched);
+    }
+    if (filtered.length === 0) {
+      // Fall back to everything
+      filtered = scored;
+    }
+
+    // Relevance guarantee: if ingredients are provided, filter out recipes with zero matches, provided we have at least one match
+    if (cleanUserIngs.length > 0) {
+      const hasAnyMatches = filtered.some(s => s.usedCount > 0);
+      if (hasAnyMatches) {
+        filtered = filtered.filter(s => s.usedCount > 0);
+      }
+    }
+
+    // Sort by direct keyword/name match, then highest available ingredients matched, then fewest missing ingredients
+    filtered.sort((a, b) => {
+      const scoreA = (a.nameMatch ? 100 : 0) + (a.cuisineMatch ? 50 : 0);
+      const scoreB = (b.nameMatch ? 100 : 0) + (b.cuisineMatch ? 50 : 0);
+      if (scoreB !== scoreA) {
+        return scoreB - scoreA;
+      }
+      if (b.usedCount !== a.usedCount) {
+        return b.usedCount - a.usedCount;
+      }
+      return a.missingCount - b.missingCount;
+    });
+
+    return filtered.map(f => f.recipe);
+  };
+
   // AI Recipes Lookup
   const findRecipes = async () => {
     if (ings.length === 0) return;
@@ -610,6 +852,26 @@ export default function App() {
     setLoading(true);
     setErrorText(null);
     setRecipes([]);
+
+    if (activeOffline) {
+      // Simulate a small loading state for realistic offline feedback
+      setTimeout(() => {
+        try {
+          const raw = findRecipesOfflineLocal(ings, filters);
+          const list = parseAIRecipes(raw);
+          setRecipes(list);
+          if (recipeEngine === "creative") {
+            setErrorText("Note: Creative AI requires internet connectivity. Switched to offline recipe catalog.");
+          }
+        } catch (err: any) {
+          console.error(err);
+          setErrorText("Failed to match recipes locally. Please try again.");
+        } finally {
+          setLoading(false);
+        }
+      }, 400);
+      return;
+    }
 
     try {
       const response = await fetch("/api/recipes", {
@@ -827,6 +1089,39 @@ export default function App() {
               <div style={{ fontSize: 10, letterSpacing: 3, color: `${C.white}70`, fontWeight: 600, textTransform: "uppercase", fontFamily: "monospace" }}>Pantry Intelligence</div>
               
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                {/* Offline Mode Badge Button */}
+                <button
+                  id="header-offline-btn"
+                  onClick={() => setForceOffline(!forceOffline)}
+                  title={activeOffline ? "Working offline using your local digital cookbook database. Click to switch to live server." : "Connected to the internet. Click to force offline mode."}
+                  style={{
+                    background: activeOffline ? "#D97706" : "rgba(255,255,255,0.15)",
+                    border: "none",
+                    borderRadius: 20,
+                    padding: "4px 10px",
+                    color: C.white,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    cursor: "pointer",
+                    transition: "all 0.2s"
+                  }}
+                >
+                  {activeOffline ? (
+                    <>
+                      <WifiOff className="w-3.5 h-3.5" style={{ color: "#FFF" }} />
+                      <span>Offline</span>
+                    </>
+                  ) : (
+                    <>
+                      <Wifi className="w-3.5 h-3.5" style={{ opacity: 0.8 }} />
+                      <span>Online</span>
+                    </>
+                  )}
+                </button>
+
                 {/* Global Timer Header Badge Button */}
                 <button 
                   id="header-timer-btn"
@@ -850,6 +1145,30 @@ export default function App() {
                 >
                   ⏱️ {isAlarmRinging ? "Ringing!" : (timerSeconds > 0 ? `${Math.floor(timerSeconds / 60)}:${String(timerSeconds % 60).padStart(2, "0")}` : "Timer")}
                 </button>
+
+                {/* Settings Configuration Badge Button */}
+                <button
+                  id="header-settings-btn"
+                  onClick={() => setSettingsOpen(true)}
+                  title="Configure Themes, 1000+ Languages, Legal & Privacy Policies"
+                  style={{
+                    background: "rgba(255,255,255,0.15)",
+                    border: "none",
+                    borderRadius: 20,
+                    padding: "4px 10px",
+                    color: C.white,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    cursor: "pointer",
+                    transition: "all 0.2s"
+                  }}
+                >
+                  <Settings className="w-3.5 h-3.5" style={{ opacity: 0.9 }} />
+                  <span>Settings</span>
+                </button>
               </div>
             </div>
             <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 900, color: C.white, lineHeight: 1.1 }}>
@@ -864,10 +1183,10 @@ export default function App() {
         {/* TAB NAV */}
         <div style={{ display: "flex", background: C.primary, padding: "0 16px 16px", flexShrink: 0 }}>
           {[
-            ["search", "🔍", "Discover"],
-            ["saved", "❤️", `Saved${savedRecipes.length ? ` (${savedRecipes.length})` : ""}`],
-            ["shopping", "🛒", `Cart${cart.length ? ` (${cart.length})` : ""}`],
-            ["history", "📖", `History${history.length ? ` (${history.length})` : ""}`]
+            ["search", "🔍", `${t("discover")}`],
+            ["saved", "❤️", `${t("saved")}${savedRecipes.length ? ` (${savedRecipes.length})` : ""}`],
+            ["shopping", "🛒", `${t("cart")}${cart.length ? ` (${cart.length})` : ""}`],
+            ["history", "📖", `${t("history")}${history.length ? ` (${history.length})` : ""}`]
           ].map(([id, icon, label]) => (
             <button 
               key={id} 
@@ -913,6 +1232,28 @@ export default function App() {
                   <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, fontWeight: 900, margin: 0, lineHeight: 1.2 }}>Let's cook something tasty!</h3>
                   <p style={{ fontSize: 11, color: "rgba(255,255,255,0.85)", margin: "4px 0 0 0", lineHeight: 1.3 }}>Select ingredients in stock or scan your kitchen fridge to instantly generate smart gourmet recipe ideas.</p>
                 </div>
+
+                {activeOffline && (
+                  <div style={{
+                    background: "#FEF3C7",
+                    border: "1px solid #F59E0B",
+                    borderRadius: 14,
+                    padding: "10px 14px",
+                    color: "#92400E",
+                    fontSize: 11,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    marginBottom: 14,
+                    boxShadow: "0 1px 2px rgba(0,0,0,0.05)"
+                  }}>
+                    <span style={{ fontSize: 18 }}>📶</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 700, fontSize: 12 }}>Offline Mode Active</div>
+                      <div style={{ opacity: 0.9, lineHeight: 1.3 }}>You are disconnected from the live server. AI Chef has automatically enabled offline recipe matching using your local cookbook database of 30 staple recipes. Feel free to cook offline!</div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Chef Quick Insights Widget */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
@@ -1085,8 +1426,8 @@ export default function App() {
                     <span style={{ fontSize: 11, fontWeight: 750, color: C.text, textTransform: "uppercase", letterSpacing: 0.5, fontFamily: "monospace" }}>
                       ⚡ Recipe Lookup Engine
                     </span>
-                    <span style={{ fontSize: 9, background: recipeEngine === "instant" ? C.green + "15" : C.accent + "15", color: recipeEngine === "instant" ? C.green : C.accent, fontWeight: 800, padding: "2px 6px", borderRadius: 10 }}>
-                      {recipeEngine === "instant" ? "⚡ ZERO DELAYS" : "🧠 CREATIVE AI"}
+                    <span style={{ fontSize: 9, background: activeOffline ? "#FEF3C7" : (recipeEngine === "instant" ? C.green + "15" : C.accent + "15"), color: activeOffline ? "#D97706" : (recipeEngine === "instant" ? C.green : C.accent), fontWeight: 800, padding: "2px 6px", borderRadius: 10 }}>
+                      {activeOffline ? "📶 OFFLINE ACTIVE" : (recipeEngine === "instant" ? "⚡ ZERO DELAYS" : "🧠 CREATIVE AI")}
                     </span>
                   </div>
                   
@@ -1116,32 +1457,43 @@ export default function App() {
                     </button>
                     <button
                       id="engine-creative-btn"
-                      onClick={() => setRecipeEngine("creative")}
+                      onClick={() => {
+                        if (activeOffline) {
+                          alert("Creative Chef AI requires internet connectivity. Currently cooking offline using local digital cookbook.");
+                        } else {
+                          setRecipeEngine("creative");
+                        }
+                      }}
                       style={{
                         flex: 1,
-                        background: recipeEngine === "creative" ? C.white : "transparent",
-                        color: recipeEngine === "creative" ? C.text : C.muted,
+                        background: recipeEngine === "creative" && !activeOffline ? C.white : "transparent",
+                        color: activeOffline ? `${C.muted}70` : (recipeEngine === "creative" ? C.text : C.muted),
                         border: "none",
                         borderRadius: 8,
                         padding: "6px 8px",
                         fontSize: 11,
-                        fontWeight: recipeEngine === "creative" ? 750 : 600,
-                        cursor: "pointer",
+                        fontWeight: recipeEngine === "creative" && !activeOffline ? 750 : 600,
+                        cursor: activeOffline ? "not-allowed" : "pointer",
+                        opacity: activeOffline ? 0.6 : 1,
                         transition: "all 0.15s",
-                        boxShadow: recipeEngine === "creative" ? "0 2px 5px rgba(0,0,0,0.08)" : "none",
+                        boxShadow: recipeEngine === "creative" && !activeOffline ? "0 2px 5px rgba(0,0,0,0.08)" : "none",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
                         gap: 4
                       }}
+                      title={activeOffline ? "Requires online connection" : "AI creative generator"}
                     >
-                      ✨ Creative Chef AI
+                      ✨ Creative Chef AI {activeOffline && "🔌"}
                     </button>
                   </div>
                   <div style={{ fontSize: 10, color: C.muted, lineHeight: 1.3, fontStyle: "italic" }}>
-                    {recipeEngine === "instant" 
-                      ? "⚡ Instant match maps your pantry items instantly with 30 premium staple recipes. No API calls or delays!"
-                      : "✨ Creative AI uses Gemini 3.5-Flash in real-time to design deep custom Michelin-starred recipes based entirely on your exact list."
+                    {activeOffline
+                      ? "📶 Standard offline matching is currently enabled because you are disconnected from the network. Matches your items with the premium 30-recipe digital catalog."
+                      : (recipeEngine === "instant" 
+                          ? "⚡ Instant match maps your pantry items instantly with 30 premium staple recipes. No API calls or delays!"
+                          : "✨ Creative AI uses Gemini 3.5-Flash in real-time to design deep custom Michelin-starred recipes based entirely on your exact list."
+                        )
                     }
                   </div>
                 </div>
@@ -1337,6 +1689,34 @@ export default function App() {
                           </button>
                         )}
                       </div>
+
+                      {(() => {
+                        const allHaveZeroMatches = ings.length > 0 && sortedRecipes.every(r => !r.used || r.used.length === 0);
+                        return allHaveZeroMatches && (
+                          <div style={{
+                            background: "#FFFBEB",
+                            border: "1px solid #FCD34D",
+                            borderRadius: 14,
+                            padding: "12px 14px",
+                            color: "#78350F",
+                            fontSize: 11,
+                            marginBottom: 14,
+                            lineHeight: 1.4,
+                            display: "flex",
+                            alignItems: "start",
+                            gap: 10,
+                            boxShadow: "0 1px 2px rgba(0,0,0,0.05)"
+                          }}>
+                            <span style={{ fontSize: 16, marginTop: -2 }}>💡</span>
+                            <div>
+                              <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 2 }}>No direct matches in local digital cookbook</div>
+                              <div style={{ opacity: 0.9 }}>
+                                We couldn't find exact matches for your listed ingredients in the staple recipes. We are showing general culinary ideas. Add common staples (eggs, milk, bread, butter, chicken, rice) or switch to <strong>Creative Chef AI</strong> to build a custom recipe!
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
 
                       {sortedRecipes.length === 0 ? (
                         <div style={{ textAlign: "center", padding: "30px 10px", color: C.muted }}>
@@ -2428,6 +2808,262 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* SETTINGS OVERLAY DRAWER */}
+      <AnimatePresence>
+        {settingsOpen && (
+          <div style={{ position: "fixed", inset: 0, zIndex: 120, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+            {/* Background Backdrop */}
+            <div onClick={() => setSettingsOpen(false)} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }} />
+            
+            <motion.div 
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 280 }}
+              style={{ 
+                position: "relative", 
+                background: C.white, 
+                borderRadius: "28px 28px 0 0", 
+                padding: "24px 24px 36px", 
+                maxHeight: "85vh", 
+                overflowY: "auto",
+                borderTop: `1px solid ${C.border}`,
+                boxShadow: "0 -8px 32px rgba(0,0,0,0.12)",
+                color: C.text
+              }}
+            >
+              <div style={{ width: 40, height: 4, background: "#CBD5E1", borderRadius: 2, margin: "0 auto 20px" }} />
+              
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 24 }}>⚙️</span>
+                  <div>
+                    <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: 20, fontWeight: 950, color: C.text, margin: 0 }}>App Settings & Legal</h3>
+                    <p style={{ fontSize: 11, color: C.muted, margin: 0 }}>Configure theme, 1000+ languages & view privacy policy by Oii Studios</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setSettingsOpen(false)} 
+                  style={{ background: "#FAF6F0", border: "1px solid #E5DCCF", borderRadius: "50%", width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontWeight: "bold" }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* THEME SELECTION SECTION */}
+              <div style={{ marginBottom: 24, background: "#FAF8F4", padding: 14, borderRadius: 20, border: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 11, color: C.muted, fontWeight: 800, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 12, fontFamily: "monospace" }}>
+                  🎨 Palette Visual Theme
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  {[
+                    { id: "forest", name: "Forest Green (Default)", color: "#1E3D2F" },
+                    { id: "slate", name: "Slate Ocean (Modern)", color: "#1E293B" },
+                    { id: "charcoal", name: "Charcoal Dark (Noir)", color: "#111827" },
+                    { id: "terracotta", name: "Terracotta Warm", color: "#7C2D12" },
+                    { id: "lavender", name: "Lavender Breeze", color: "#4C1D95" },
+                    { id: "solar", name: "Solar Sunset (Bold)", color: "#991B1B" }
+                  ].map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => {
+                        setCurrentTheme(t.id);
+                        localStorage.setItem("pantry_theme", t.id);
+                      }}
+                      style={{
+                        background: currentTheme === t.id ? C.primary : "white",
+                        color: currentTheme === t.id ? "white" : C.text,
+                        border: `1px solid ${currentTheme === t.id ? C.primary : "#E2E8F0"}`,
+                        borderRadius: 12,
+                        padding: "8px 10px",
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        transition: "all 0.15s"
+                      }}
+                    >
+                      <span style={{ width: 12, height: 12, borderRadius: "50%", background: t.color, border: "1px solid rgba(0,0,0,0.15)" }} />
+                      <span style={{ flex: 1, textAlign: "left" }}>{t.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 1000 INTERNATIONAL LANGUAGES SECTION */}
+              <div style={{ marginBottom: 24, background: "#FAF8F4", padding: 14, borderRadius: 20, border: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 11, color: C.muted, fontWeight: 800, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10, fontFamily: "monospace", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span>🌐 Choose International Language</span>
+                  <span style={{ fontSize: 9, background: C.accent, color: "white", padding: "1px 6px", borderRadius: 8 }}>1000 Languages Supported</span>
+                </div>
+                
+                {/* Search box for 1000 languages */}
+                <div style={{ position: "relative", marginBottom: 10 }}>
+                  <input
+                    type="text"
+                    id="lang-search-input"
+                    placeholder="Search 1,000 international languages (e.g. Swahili, Luganda, Spanish)..."
+                    onChange={(e) => {
+                      const q = e.target.value.toLowerCase();
+                      const listEl = document.getElementById("lang-filtered-list");
+                      if (listEl) {
+                        const children = listEl.children;
+                        for (let i = 0; i < children.length; i++) {
+                          const child = children[i] as HTMLElement;
+                          const name = child.getAttribute("data-name") || "";
+                          if (name.includes(q)) {
+                            child.style.display = "flex";
+                          } else {
+                            child.style.display = "none";
+                          }
+                        }
+                      }
+                    }}
+                    style={{
+                      width: "100%",
+                      padding: "8px 12px",
+                      borderRadius: 10,
+                      border: "1px solid #CBD5E1",
+                      fontSize: 11,
+                      outline: "none",
+                      boxSizing: "border-box"
+                    }}
+                  />
+                </div>
+
+                <div 
+                  id="lang-filtered-list"
+                  style={{ 
+                    maxHeight: "140px", 
+                    overflowY: "auto", 
+                    background: "white", 
+                    borderRadius: 12, 
+                    border: "1px solid #E2E8F0",
+                    padding: 4
+                  }}
+                  className="scrollbar-thin"
+                >
+                  {allLanguages.map((lang) => {
+                    const isSelected = currentLanguage === lang.code;
+                    return (
+                      <div
+                        key={lang.code}
+                        data-name={`${lang.name.toLowerCase()} ${lang.nativeName.toLowerCase()}`}
+                        onClick={() => {
+                          setCurrentLanguage(lang.code);
+                          localStorage.setItem("pantry_language", lang.code);
+                        }}
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          padding: "6px 12px",
+                          borderRadius: 8,
+                          cursor: "pointer",
+                          background: isSelected ? `${C.accent}12` : "transparent",
+                          color: isSelected ? C.accent : C.text,
+                          fontSize: 11,
+                          fontWeight: isSelected ? 750 : 500,
+                          transition: "all 0.1s"
+                        }}
+                      >
+                        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span>🌍</span>
+                          <span>{lang.name}</span>
+                        </span>
+                        <span style={{ fontSize: 10, opacity: 0.7, fontFamily: "monospace" }}>{lang.nativeName}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Localized feedback note */}
+                <div style={{ marginTop: 8, fontSize: 10, color: C.muted, fontStyle: "italic", textAlign: "center" }}>
+                  Selected Language: <strong>{allLanguages.find(l => l.code === currentLanguage)?.name || currentLanguage}</strong>. App UI dynamically adjusts labels and parameters.
+                </div>
+              </div>
+
+              {/* COOKING LEGAL STUFF & OII STUDIOS PRIVACY POLICY */}
+              <div style={{ background: "#FAF8F4", padding: 14, borderRadius: 20, border: `1px solid ${C.border}`, marginBottom: 14 }}>
+                <div style={{ fontSize: 11, color: C.muted, fontWeight: 800, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10, fontFamily: "monospace" }}>
+                  ⚖️ Legal Disclosures & Privacy Policy
+                </div>
+                
+                <div 
+                  style={{ 
+                    maxHeight: "180px", 
+                    overflowY: "auto", 
+                    fontSize: 10, 
+                    lineHeight: 1.4, 
+                    color: C.muted, 
+                    background: "white", 
+                    padding: 12, 
+                    borderRadius: 12, 
+                    border: "1px solid #E2E8F0" 
+                  }}
+                  className="scrollbar-thin"
+                >
+                  <div style={{ fontWeight: 800, color: C.text, marginBottom: 4, fontSize: 11 }}>1. Privacy Policy Overview</div>
+                  <p style={{ margin: "0 0 10px 0" }}>
+                    At <strong>AI Chef (Oii Studios)</strong>, we take your privacy extremely seriously. We do not track, trade, sell, or collect individual ingredients lists, recipe generation history, or saved items to third-party ad brokers. All cooking data is persisted locally in your client's secure local storage.
+                  </p>
+
+                  <div style={{ fontWeight: 800, color: C.text, marginBottom: 4, fontSize: 11 }}>2. Data Collection & Cloud Synchronization</div>
+                  <p style={{ margin: "0 0 10px 0" }}>
+                    If you choose to log in with your Google Account, we securely synchronize your profile, saved recipe metadata, and kitchen inventory to our persistent Cloud databases (Firebase Firestore). If you authorize Google Tasks, we create grocery checkout lists under your explicit authorization. We never access your other Google workspace data or read unrelated files.
+                  </p>
+
+                  <div style={{ fontWeight: 800, color: C.text, marginBottom: 4, fontSize: 11 }}>3. AI Content & Chef Liability Waiver</div>
+                  <p style={{ margin: "0 0 10px 0" }}>
+                    All culinary recipes, measurements, steps, and suggestions generated by AI Chef are created programmatically via high-performance Gemini LLMs. Cooking is an art and requires human judgment. <strong>Oii Studios</strong> is not liable for kitchen incidents, food allergies, undercooked meat, or other cooking safety hazards. Please verify food safety guidelines and temperature instructions before serving.
+                  </p>
+
+                  <div style={{ fontWeight: 800, color: C.text, marginBottom: 4, fontSize: 11 }}>4. Terms of Service</div>
+                  <p style={{ margin: "0 0 10px 0" }}>
+                    By cooking with AI Chef, you agree to cook safely and follow standard recipe rules. Our digital cookbook catalog of 30 staple recipes is provided under Oii Studios copyright and is for virtual utility purpose only.
+                  </p>
+                  
+                  <div style={{ fontWeight: 800, color: C.text, marginBottom: 4, fontSize: 11 }}>5. Cookie Policy</div>
+                  <p style={{ margin: 0 }}>
+                    AI Chef utilizes standard local browser state elements to preserve your preferences (theme selection, active language setting, kitchen inventory) across sessions. No tracking pixels or telemetry cookies are deployed.
+                  </p>
+                </div>
+              </div>
+
+              {/* COPYRIGHT BY OII STUDIOS */}
+              <div style={{ textAlign: "center", padding: "10px 0 0", borderTop: "1px solid #E2E8F0" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.text }}>
+                  AI Chef by Oii Studios
+                </div>
+                <div style={{ fontSize: 9, color: C.muted, marginTop: 2 }}>
+                  © 2026 Oii Studios. All rights reserved. Version 2.4.0 (Gourmet Suite Edition).
+                </div>
+              </div>
+
+              <button
+                onClick={() => setSettingsOpen(false)}
+                style={{
+                  width: "100%",
+                  background: C.primary,
+                  color: C.white,
+                  border: "none",
+                  borderRadius: 12,
+                  padding: "13px",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  marginTop: 14
+                }}
+              >
+                Close Settings & Cook!
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* DETAILED INTERACTIVE MULTI-STEP RECIPE MANUAL MODAL */}
       <AnimatePresence>
         {selectedRecipe && (
@@ -2474,6 +3110,9 @@ function RecipeCard({
   rating?: number;
   key?: any;
 }) {
+  const currentTheme = localStorage.getItem("pantry_theme") || "forest";
+  const C = THEMES[currentTheme as keyof typeof THEMES] || THEMES.forest;
+
   return (
     <motion.div 
       onClick={onOpen}
@@ -2603,6 +3242,9 @@ function RecipeCard({
 
 // REUSABLE SUB-SECTION HELPER FOR FILTER
 function FilterSection({ title, children }: { title: string; children: React.ReactNode }) {
+  const currentTheme = localStorage.getItem("pantry_theme") || "forest";
+  const C = THEMES[currentTheme as keyof typeof THEMES] || THEMES.forest;
+
   return (
     <div style={{ marginBottom: 14 }}>
       <div style={{ fontSize: 9, color: C.muted, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 6, fontFamily: "monospace" }}>{title}</div>
@@ -2613,6 +3255,9 @@ function FilterSection({ title, children }: { title: string; children: React.Rea
 
 // REUSABLE FILTER CHIP PILLS
 function FilterChip({ label, selected, onClick }: { label: string; selected: boolean; onClick: () => void; key?: any }) {
+  const currentTheme = localStorage.getItem("pantry_theme") || "forest";
+  const C = THEMES[currentTheme as keyof typeof THEMES] || THEMES.forest;
+
   return (
     <button 
       onClick={onClick}

@@ -253,7 +253,7 @@ app.post("/api/recipes", async (req, res) => {
 
     if (engine === "instant") {
       // 3. SUPER-SPEED INSTANT ENGINE: Map over 30 staple recipes using dynamic heuristics
-      const cleanUserIngs = ings.map(i => i.toLowerCase().trim());
+      const cleanUserIngs = ings.map(i => i.toLowerCase().trim()).filter(i => i.length >= 2);
       
       const scored = CURATED_RECIPES.map((recipe) => {
         const used: string[] = [];
@@ -358,6 +358,14 @@ app.post("/api/recipes", async (req, res) => {
         filtered = scored;
       }
 
+      // Relevance guarantee: if ingredients are provided, filter out recipes with zero matches, provided we have at least one match
+      if (cleanUserIngs.length > 0) {
+        const hasAnyMatches = filtered.some(s => s.usedCount > 0);
+        if (hasAnyMatches) {
+          filtered = filtered.filter(s => s.usedCount > 0);
+        }
+      }
+
       // Sort by direct keyword/name match, then highest available ingredients matched, then fewest missing ingredients
       filtered.sort((a, b) => {
         const scoreA = (a.nameMatch ? 100 : 0) + (a.cuisineMatch ? 50 : 0);
@@ -371,8 +379,8 @@ app.post("/api/recipes", async (req, res) => {
         return a.missingCount - b.missingCount;
       });
 
-      // Slice top 4 matched recipes
-      results = filtered.slice(0, 4).map(f => f.recipe);
+      // Return all matched recipes
+      results = filtered.map(f => f.recipe);
       
     } else {
       // 4. CREATIVE AI ENGINE: Google Gemini 2.0-Flash
@@ -399,11 +407,11 @@ app.post("/api/recipes", async (req, res) => {
 
       const userPrompt = `I have the following ingredients available in my kitchen: ${ings.join(", ")}.
 ${requirementPrompt}
-Suggest exactly 4 unique, delicious, and realistic recipes utilizing these ingredients. Create realistic culinary steps and appropriate measures for other standard kitchen items.`;
+Suggest exactly 4 unique, delicious, and highly relevant recipes that MUST utilize at least one of these primary ingredients as a core element. Create realistic culinary steps and appropriate measures for other standard kitchen items.`;
 
       const systemInstruction = 
         "You are Chef Gemini, a high-end Michelin-starred computational chef. " +
-        "Create high-quality recipes based on the user's available ingredients. " +
+        "Create high-quality, highly relevant recipes based on the user's available ingredients. Each recipe MUST use at least one of the user's input ingredients as a key component. " +
         "Be concise and clear in step-by-step cooking directions to optimize response speed. " +
         "Classify each ingredient in the cooking ingredients list as either 'used' (which matches the list of user input ingredients perfectly) or 'missing' (other essential elements they need to buy or prepare). " +
         "Provide complete real-world instruction steps and accurate ingredients with measurements in the 'allIngs' array. " +
