@@ -102,15 +102,20 @@ export default function RecipeDetailModal({
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs">
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs"
+    >
       {/* Backdrop Closers */}
       <div className="absolute inset-0" onClick={onClose} />
 
       <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 15 }}
+        initial={{ opacity: 0, scale: 0.96, y: 40 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 15 }}
-        transition={{ duration: 0.25, ease: "easeOut" }}
+        exit={{ opacity: 0, scale: 0.96, y: 30 }}
+        transition={{ type: "spring", stiffness: 280, damping: 24 }}
         className="relative w-full max-w-2xl bg-[#FAF8F4] text-slate-800 rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col z-10 border border-amber-100"
       >
         {/* Playfair & Forest Color Themed Banner */}
@@ -562,6 +567,6 @@ export default function RecipeDetailModal({
           </button>
         </div>
       </motion.div>
-    </div>
+    </motion.div>
   );
 }

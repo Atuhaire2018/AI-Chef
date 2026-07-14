@@ -9,6 +9,29 @@ import { LogIn, LogOut, RefreshCw, Eye, Trash2, CalendarRange, Sparkles, Clipboa
 import { CURATED_RECIPES } from "./data/curatedRecipes";
 import { generate1000Languages, LOCALIZATIONS, t as globalT } from "./data/languages";
 
+const containerVariants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.05
+    }
+  }
+};
+
+const cardVariants = {
+  hidden: { opacity: 0, y: 16 },
+  show: { 
+    opacity: 1, 
+    y: 0,
+    transition: {
+      type: "spring",
+      stiffness: 240,
+      damping: 20
+    }
+  }
+};
+
 const THEMES = {
   forest: {
     primary: "#1E3D2F",
@@ -175,7 +198,9 @@ export default function App() {
   const [user, setUser] = useState<any>(null);
   const [sqlUserId, setSqlUserId] = useState<number | null>(null);
   const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(() => {
-    return sessionStorage.getItem("pantry_google_access_token") || null;
+    const val = sessionStorage.getItem("pantry_google_access_token");
+    if (!val || val === "null" || val === "undefined") return null;
+    return val;
   });
   const [syncing, setSyncing] = useState<boolean>(false);
   const [taskLists, setTaskLists] = useState<any[]>([]);
@@ -238,6 +263,14 @@ export default function App() {
       setRecipeEngine("instant");
     }
   }, [activeOffline, recipeEngine]);
+
+  // Automatically trigger search when switching between engines
+  useEffect(() => {
+    if (ings.length > 0) {
+      findRecipes();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recipeEngine]);
 
   // Suggested Recipes (AI Chef Section) Sorting State
   const [recipeSortBy, setRecipeSortBy] = useState<"missing" | "time" | "calories" | "name" | "rating">(() => {
@@ -400,7 +433,7 @@ export default function App() {
   };
 
   const loadGoogleTaskLists = async (accessToken: string) => {
-    if (!accessToken) return;
+    if (!accessToken || accessToken === "null" || accessToken === "undefined") return;
     try {
       const idToken = await auth.currentUser?.getIdToken();
       if (!idToken) return;
@@ -451,7 +484,7 @@ export default function App() {
         const idToken = await currentUser.getIdToken();
         await syncWithCloudSQL(currentUser, idToken);
         
-        if (googleAccessToken) {
+        if (googleAccessToken && googleAccessToken !== "null" && googleAccessToken !== "undefined") {
           loadGoogleTaskLists(googleAccessToken);
         }
       } else {
@@ -536,13 +569,13 @@ export default function App() {
 
   const handleAddRecipeToGoogleTasks = async (title: string, notes: string): Promise<any> => {
     let token = googleAccessToken || sessionStorage.getItem("pantry_google_access_token");
-    if (!token) {
+    if (!token || token === "null" || token === "undefined") {
       const connected = await handleConnectGoogleTasks();
       if (!connected) throw new Error("Google Tasks connection was declined or failed.");
       token = sessionStorage.getItem("pantry_google_access_token");
     }
     
-    if (!token) throw new Error("Google access token is missing.");
+    if (!token || token === "null" || token === "undefined") throw new Error("Google access token is missing.");
 
     const idToken = await auth.currentUser?.getIdToken();
     if (!idToken) throw new Error("Firebase auth token missing.");
@@ -575,7 +608,7 @@ export default function App() {
   const handleExportCartToGoogleTasks = async () => {
     if (cart.length === 0) return;
     let token = googleAccessToken || sessionStorage.getItem("pantry_google_access_token");
-    if (!token) {
+    if (!token || token === "null" || token === "undefined") {
        const connected = await handleConnectGoogleTasks();
        if (!connected) return;
        token = sessionStorage.getItem("pantry_google_access_token");
@@ -1063,7 +1096,16 @@ export default function App() {
   return (
     <div style={{ background: "#EDE8DE", minHeight: "100vh", display: "flex", justifyContent: "center", alignItems: "center", padding: "16px", boxSizing: "border-box" }} className="selection:bg-amber-500 selection:text-white">
       {/* Handheld Device Shell Container */}
-      <div 
+      <motion.div 
+        initial={{ opacity: 0, y: 40, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ 
+          type: "spring",
+          stiffness: 100,
+          damping: 16,
+          mass: 1.1,
+          duration: 0.8
+        }}
         style={{
           width: "100%",
           maxWidth: 850,
@@ -1724,7 +1766,12 @@ export default function App() {
                           <div style={{ fontSize: 11, lineHeight: 1.4 }}>Try typing another search keyword or clear the filter query.</div>
                         </div>
                       ) : (
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12, marginBottom: 12 }}>
+                        <motion.div 
+                          variants={containerVariants}
+                          initial="hidden"
+                          animate="show"
+                          style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12, marginBottom: 12 }}
+                        >
                           {sortedRecipes.map(r => (
                             <RecipeCard 
                               key={r.id} 
@@ -1735,7 +1782,7 @@ export default function App() {
                               rating={ratings[r.name] || 0}
                             />
                           ))}
-                        </div>
+                        </motion.div>
                       )}
                     </>
                   );
@@ -1770,7 +1817,12 @@ export default function App() {
                 ) : (
                   <>
                     <div style={{ fontSize: 10, color: C.muted, fontWeight: 600, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 12, fontFamily: "monospace" }}>Saved Cookbooks ({savedRecipes.length})</div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12, marginBottom: 12 }}>
+                    <motion.div 
+                      variants={containerVariants}
+                      initial="hidden"
+                      animate="show"
+                      style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12, marginBottom: 12 }}
+                    >
                       {savedRecipes.map(r => (
                         <RecipeCard 
                           key={r.id} 
@@ -1781,7 +1833,7 @@ export default function App() {
                           rating={ratings[r.name] || 0}
                         />
                       ))}
-                    </div>
+                    </motion.div>
                   </>
                 )}
               </motion.div>
@@ -2427,7 +2479,7 @@ export default function App() {
             )}
           </AnimatePresence>
         </div>
-      </div>
+      </motion.div>
 
       {/* FILTER BOTTOM DRAWER */}
       <AnimatePresence>
@@ -3116,8 +3168,7 @@ function RecipeCard({
   return (
     <motion.div 
       onClick={onOpen}
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
+      variants={cardVariants}
       exit={{ opacity: 0, scale: 0.96 }}
       whileHover={{ 
         y: -4, 
@@ -3125,12 +3176,6 @@ function RecipeCard({
         boxShadow: "0 12px 24px -10px rgba(30, 61, 47, 0.12), 0 4px 12px -2px rgba(30, 61, 47, 0.04)"
       }}
       whileTap={{ scale: 0.98 }}
-      transition={{ 
-        type: "spring",
-        stiffness: 300,
-        damping: 24,
-        mass: 0.8
-      }}
       style={{
         background: C.white,
         borderRadius: 16,
