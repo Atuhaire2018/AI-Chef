@@ -17,10 +17,50 @@ import {
   Youtube,
   Sparkles,
   DollarSign,
-  Star
+  Star,
+  ExternalLink
 } from "lucide-react";
 import { AIRecipe } from "../types";
 import { t } from "../data/languages";
+import CookModePanel from "./CookModePanel";
+import { getRecipeAllergens } from "../utils/allergenHelper";
+
+const CUISINE_IMAGES: Record<string, string> = {
+  italian: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80&w=800",
+  asian: "https://images.unsplash.com/photo-1563245372-f21724e3856d?auto=format&fit=crop&q=80&w=800",
+  mediterranean: "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?auto=format&fit=crop&q=80&w=800",
+  african: "https://images.unsplash.com/photo-1534422298391-e4f8c172dddb?auto=format&fit=crop&q=80&w=800",
+  american: "https://images.unsplash.com/photo-1484723091739-30a097e8f929?auto=format&fit=crop&q=80&w=800",
+  indian: "https://images.unsplash.com/photo-1585938338392-50a59970d8ee?auto=format&fit=crop&q=80&w=800",
+  french: "https://images.unsplash.com/photo-1514944224746-6bba5b09e5c2?auto=format&fit=crop&q=80&w=800",
+  mexican: "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?auto=format&fit=crop&q=80&w=800",
+};
+
+const getRecipeImage = (recipe: AIRecipe): string => {
+  if (recipe.imageUrl && recipe.imageUrl.trim().length > 0) {
+    return recipe.imageUrl;
+  }
+  const cuisineKey = recipe.cuisine?.toLowerCase().trim() || "";
+  for (const [key, url] of Object.entries(CUISINE_IMAGES)) {
+    if (cuisineKey.includes(key) || key.includes(cuisineKey)) {
+      return url;
+    }
+  }
+  return "https://images.unsplash.com/photo-1498837167922-ddd27525d352?auto=format&fit=crop&q=80&w=800";
+};
+
+const parseIngredientString = (ingLine: string): { measure: string; ingredient: string } => {
+  const regex = /^([\d\s\/\.\u00BC-\u00BE\u2150-\u215E]+(?:\s*(?:tbsp|tsp|cup|cups|g|ml|oz|lb|lbs|clove|cloves|can|cans|slice|slices|pinch|pinches|handful|handfuls|piece|pieces|tbsp\.|tsp\.|g\.|ml\.))?)(?:\s+(.*))?$/i;
+  const match = ingLine.match(regex);
+  if (match) {
+    const measure = match[1].trim();
+    const ingredient = (match[2] || "").trim();
+    if (ingredient) {
+      return { measure, ingredient };
+    }
+  }
+  return { measure: "", ingredient: ingLine };
+};
 
 interface RecipeDetailModalProps {
   recipe: AIRecipe;
@@ -53,6 +93,7 @@ export default function RecipeDetailModal({
 }: RecipeDetailModalProps) {
   const [checkedIngredients, setCheckedIngredients] = useState<Record<string, boolean>>({});
   const [completedSteps, setCompletedSteps] = useState<Record<number, boolean>>({});
+  const [isCookModeActive, setIsCookModeActive] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [hoveredRating, setHoveredRating] = useState<number | null>(null);
   const [exportingTasks, setExportingTasks] = useState(false);
@@ -118,18 +159,23 @@ export default function RecipeDetailModal({
         transition={{ type: "spring", stiffness: 280, damping: 24 }}
         className="relative w-full max-w-2xl bg-[#FAF8F4] text-slate-800 rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col z-10 border border-amber-100"
       >
-        {/* Playfair & Forest Color Themed Banner */}
-        <div className="relative bg-[#1E3D2F] text-[#FAF8F4] p-6 sm:p-8 shrink-0 overflow-hidden border-b border-amber-900/10">
-          {/* Graphic Background Elements */}
-          <div className="absolute -top-12 -right-12 w-32 h-32 rounded-full bg-amber-500/10 pointer-events-none" />
-          <div className="absolute -bottom-8 -left-8 w-24 h-24 rounded-full bg-white/5 pointer-events-none" />
+        {/* Playfair & Forest Color Themed Visual Banner with Header Image */}
+        <div className="relative h-64 sm:h-72 bg-[#1E3D2F] shrink-0 overflow-hidden border-b border-amber-900/10">
+          <img
+            src={getRecipeImage(recipe)}
+            alt={recipe.name}
+            className="w-full h-full object-cover opacity-85 transition-opacity duration-300"
+            referrerPolicy="no-referrer"
+          />
+          {/* Elegant Dark Gradient overlay blending into deep forest green at the bottom */}
+          <div className="absolute inset-0 bg-gradient-to-t from-[#1E3D2F] via-[#1E3D2F]/50 to-black/40" />
 
           {/* Action Header Button Controls */}
-          <div className="absolute top-4 right-4 flex items-center gap-2">
+          <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
             <button
               id="share-recipe-btn"
               onClick={handleShare}
-              className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 text-[#FAF8F4] transition-all border border-white/10"
+              className="p-2.5 rounded-xl bg-black/50 hover:bg-black/75 text-[#FAF8F4] backdrop-blur-md transition-all border border-white/10 active:scale-95"
               title="Copy recipe details to clipboard"
             >
               {copiedLink ? <span className="text-xs font-bold text-amber-300 font-mono">{tr("copied", "Copied!")}</span> : <Share2 className="w-4 h-4" />}
@@ -137,10 +183,10 @@ export default function RecipeDetailModal({
             <button
               id={`detail-fav-btn-${recipe.id}`}
               onClick={onToggleSave}
-              className={`p-2.5 rounded-xl transition-all border shrink-0 active:scale-95 ${
+              className={`p-2.5 rounded-xl backdrop-blur-md transition-all border shrink-0 active:scale-95 ${
                 isSaved
                   ? "bg-amber-500 border-amber-500 text-white"
-                  : "bg-white/10 border-white/10 hover:bg-white/20 text-[#FAF8F4]"
+                  : "bg-black/50 border-white/10 hover:bg-black/75 text-[#FAF8F4]"
               }`}
               title={isSaved ? "Remove from Saved Recipes" : "Save to Favorites"}
             >
@@ -149,54 +195,73 @@ export default function RecipeDetailModal({
             <button
               id="close-recipe-btn"
               onClick={onClose}
-              className="p-2.5 rounded-xl bg-white/10 border border-white/10 text-white hover:bg-white/20 hover:text-white shrink-0 active:scale-95 transition-all"
+              className="p-2.5 rounded-xl bg-black/50 border border-white/10 text-white hover:bg-black/75 backdrop-blur-md shrink-0 active:scale-95 transition-all"
               title="Close Panel"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
 
-          {/* Category & Title */}
-          <div className="space-y-2 max-w-[85%]">
-            <div className="text-[52px] leading-none mb-1 select-none">{recipe.emoji}</div>
-            <h2 className="text-xl sm:text-2xl font-serif font-black leading-tight text-white tracking-normal font-bold">
+          {/* Bottom Left: Title, Emoji & description, beautifully overlaying the image */}
+          <div className="absolute bottom-4 left-6 right-6 text-[#FAF8F4] z-10">
+            <div className="flex flex-wrap gap-2 mb-2">
+              <span className="px-2.5 py-0.5 text-xs font-semibold bg-amber-500 text-white rounded-full flex items-center gap-1 select-none shadow-sm">
+                <span>{recipe.emoji}</span>
+                <span>{tr("aiChefCurated", "Chef Curated")}</span>
+              </span>
+              {recipe.dietaryTags && recipe.dietaryTags.map(tag => (
+                <span key={tag} className="px-2.5 py-0.5 text-xs font-semibold bg-emerald-600 text-white rounded-full">
+                  {tr(tag, tag)}
+                </span>
+              ))}
+              {getRecipeAllergens(recipe).map(allg => (
+                <span key={allg} className="px-2.5 py-0.5 text-xs font-semibold bg-rose-600/90 text-white rounded-full flex items-center gap-1 border border-rose-500/30 shadow-sm">
+                  <span>⚠️</span>
+                  <span>{tr("contains", "Contains")} {tr(allg, allg)}</span>
+                </span>
+              ))}
+            </div>
+            <h2 className="text-xl sm:text-2xl font-serif font-black leading-tight text-white tracking-normal font-bold shadow-xs">
               {tr(recipe.name, recipe.name)}
             </h2>
-            <p className="text-xs sm:text-sm text-[#FAF8F4]/80 italic max-w-lg font-medium">
+            <p className="text-xs sm:text-sm text-[#FAF8F4]/90 italic max-w-lg font-medium mt-1 line-clamp-1">
               "{tr(recipe.desc, recipe.desc)}"
             </p>
-          </div>
 
-          {/* Recipe Metadata badges */}
-          <div className="flex flex-wrap gap-1.5 mt-5 max-w-[95%]">
-            {onStartTimer ? (
-              <button
-                type="button"
-                id="modal-trigger-timer-badge"
-                onClick={() => onStartTimer(recipe.time * 60)}
-                className="flex items-center gap-1.5 px-3 py-1 bg-amber-500 hover:bg-amber-600 border border-amber-400 text-[#FAF8F4] rounded-full text-xs font-bold transition-all active:scale-95 cursor-pointer shadow-xs"
-                title={`Start ${recipe.time} min kitchen timer!`}
-              >
-                <Clock className="w-3.5 h-3.5 text-white animate-bounce" />
-                <span>⏱️ {tr("timer", "Timer")} ({recipe.time}{tr("minutes", "m")})</span>
-              </button>
-            ) : (
-              <div className="flex items-center gap-1.5 px-3 py-1 bg-white/10 border border-white/10 rounded-full text-xs font-semibold">
-                <Clock className="w-3.5 h-3.5 text-amber-400" />
-                <span>⏱ {recipe.time} {tr("minutes", "Min")}</span>
+            {/* Recipe Metadata badges */}
+            <div className="flex flex-wrap gap-1.5 mt-3 max-w-[95%]">
+              {onStartTimer ? (
+                <button
+                  type="button"
+                  id="modal-trigger-timer-badge"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onStartTimer(recipe.time * 60);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1 bg-amber-500 hover:bg-amber-600 border border-amber-400 text-[#FAF8F4] rounded-full text-xs font-bold transition-all active:scale-95 cursor-pointer shadow-xs"
+                  title={`Start ${recipe.time} min kitchen timer!`}
+                >
+                  <Clock className="w-3.5 h-3.5 text-white animate-bounce" />
+                  <span>⏱️ {tr("timer", "Timer")} ({recipe.time}{tr("minutes", "m")})</span>
+                </button>
+              ) : (
+                <div className="flex items-center gap-1.5 px-3 py-1 bg-black/40 border border-white/10 rounded-full text-xs font-semibold backdrop-blur-xs">
+                  <Clock className="w-3.5 h-3.5 text-amber-400" />
+                  <span>⏱ {recipe.time} {tr("minutes", "Min")}</span>
+                </div>
+              )}
+              <div className="flex items-center gap-1.5 px-3 py-1 bg-black/40 border border-white/10 rounded-full text-xs font-semibold backdrop-blur-xs">
+                <Gauge className="w-3.5 h-3.5 text-emerald-400" />
+                <span>👨‍🍳 {tr(recipe.difficulty, recipe.difficulty)}</span>
               </div>
-            )}
-            <div className="flex items-center gap-1.5 px-3 py-1 bg-white/10 border border-white/10 rounded-full text-xs font-semibold">
-              <Gauge className="w-3.5 h-3.5 text-emerald-400" />
-              <span>👨‍🍳 {tr(recipe.difficulty, recipe.difficulty)}</span>
-            </div>
-            <div className="flex items-center gap-1.5 px-3 py-1 bg-white/10 border border-white/10 rounded-full text-xs font-semibold">
-              <Globe className="w-3.5 h-3.5 text-sky-400" />
-              <span>🌍 {tr(recipe.cuisine, recipe.cuisine)}</span>
-            </div>
-            <div className="flex items-center gap-1.5 px-3 py-1 bg-white/10 border border-white/10 rounded-full text-xs font-semibold">
-              <Users className="w-3.5 h-3.5 text-teal-400" />
-              <span>👥 {recipe.servings} {tr("servings", "Servings")}</span>
+              <div className="flex items-center gap-1.5 px-3 py-1 bg-black/40 border border-white/10 rounded-full text-xs font-semibold backdrop-blur-xs">
+                <Globe className="w-3.5 h-3.5 text-sky-400" />
+                <span>🌍 {tr(recipe.cuisine, recipe.cuisine)}</span>
+              </div>
+              <div className="flex items-center gap-1.5 px-3 py-1 bg-black/40 border border-white/10 rounded-full text-xs font-semibold backdrop-blur-xs">
+                <Users className="w-3.5 h-3.5 text-teal-400" />
+                <span>👥 {recipe.servings} {tr("servings", "Servings")}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -471,15 +536,16 @@ export default function RecipeDetailModal({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {recipe.allIngs.map((ing) => {
                 const isSelected = !!checkedIngredients[ing];
+                const { measure, ingredient } = parseIngredientString(ing);
                 return (
                   <button
                     key={ing}
                     type="button"
                     onClick={() => toggleIngredientCheck(ing)}
-                    className={`flex items-center justify-between p-3 rounded-xl border text-left text-sm transition-all outline-hidden cursor-pointer ${
+                    className={`flex items-center justify-between p-3 rounded-xl border text-left text-sm transition-all outline-hidden cursor-pointer select-none ${
                       isSelected
-                        ? "bg-[#E6F4EC] border-emerald-100 text-[#2B6B44]/70"
-                        : "bg-white border-slate-200/60 hover:bg-slate-50 text-slate-700 hover:border-slate-300"
+                        ? "bg-[#E6F4EC] border-emerald-100 text-[#2B6B44]/60"
+                        : "bg-white border-slate-200/60 hover:bg-slate-50 text-slate-700 hover:border-slate-300 shadow-2xs"
                     }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0 pr-1.5">
@@ -488,10 +554,19 @@ export default function RecipeDetailModal({
                       }`}>
                         {isSelected && <Check className="w-2.5 h-2.5 stroke-[4]" />}
                       </span>
-                      <span className={`font-semibold capitalize truncate ${isSelected ? "line-through opacity-60" : ""}`}>
-                        {tr(ing, ing)}
+                      <span className={`font-semibold capitalize truncate ${isSelected ? "line-through opacity-70" : ""}`}>
+                        {tr(ingredient, ingredient)}
                       </span>
                     </div>
+                    {measure && (
+                      <span className={`text-xs font-mono px-2 py-0.5 rounded-lg shrink-0 transition-all ${
+                        isSelected 
+                          ? "bg-slate-100/60 text-slate-300 border border-slate-200/20" 
+                          : "bg-[#FAF8F4] border border-amber-100/50 text-[#D95F2B] font-bold"
+                      }`}>
+                        {tr(measure, measure)}
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -500,16 +575,28 @@ export default function RecipeDetailModal({
 
           {/* Stepper directions */}
           <div className="space-y-4">
-            <div className="flex items-center justify-between border-b pb-2 border-slate-200/60">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2 border-slate-200/60">
               <h3 className="font-serif text-lg font-bold text-slate-900 flex items-center gap-2">
                 <CheckCircle className="w-5 h-5 text-[#1E3D2F]" />
                 {tr("howToCook", "How to Cook Interactive Steps")}
               </h3>
-              {progressPercentage > 0 && (
-                <span className="text-xs font-mono font-bold bg-[#E6F4EC] text-[#2B6B44] px-2.5 py-1 rounded-full">
-                  {progressPercentage}% {tr("completed", "Completed")}
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  id="start-cook-mode-btn"
+                  onClick={() => setIsCookModeActive(true)}
+                  className="flex items-center gap-1.5 px-3 py-1 bg-[#1E3D2F] hover:bg-[#152c22] text-white rounded-full text-xs font-bold transition-all active:scale-95 shadow-sm cursor-pointer"
+                  title="Enter immersive full screen step-by-step cooking mode"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+                  <span>{tr("startCookMode", "Start Cook Mode 🍳")}</span>
+                </button>
+                {progressPercentage > 0 && (
+                  <span className="text-xs font-mono font-bold bg-[#E6F4EC] text-[#2B6B44] px-2.5 py-1 rounded-full">
+                    {progressPercentage}% {tr("completed", "Completed")}
+                  </span>
+                )}
+              </div>
             </div>
 
             {/* Cooking Progress Bar */}
@@ -553,20 +640,45 @@ export default function RecipeDetailModal({
           </div>
         </div>
 
-        {/* Footer controls */}
-        <div className="shrink-0 p-4 bg-[#EDE8DE] border-t border-amber-100/55 flex justify-between items-center text-xs font-bold">
-          <span className="text-slate-500 font-serif italic">
-            {tr("chefHelper", "Chef Gemini AI Curated Kitchen helper")}
-          </span>
+        {/* Footer controls with Google Search merge feature from MealDetailModal */}
+        <div className="shrink-0 p-4 bg-[#EDE8DE] border-t border-amber-100/55 flex flex-wrap gap-3 justify-between items-center text-xs font-bold">
+          <div className="flex items-center gap-2">
+            <a
+              id="google-search-btn"
+              href={`https://www.google.com/search?q=${encodeURIComponent(recipe.name)}+recipe`}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-slate-600 hover:text-slate-800 font-medium transition-all hover:bg-white/50 border border-transparent hover:border-amber-100"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span>{tr("googleSearch", "Google Search Recipe")} ➔</span>
+            </a>
+          </div>
           <button
             type="button"
             onClick={onClose}
-            className="px-4.5 py-2 bg-[#1E3D2F] hover:bg-[#152c22] text-[#FAF8F4] rounded-lg transition-colors active:scale-95"
+            className="px-4.5 py-2 bg-[#1E3D2F] hover:bg-[#152c22] text-[#FAF8F4] rounded-lg transition-colors active:scale-95 shadow-sm"
           >
             {tr("finishedCooking", "Finished Cooking")}
           </button>
         </div>
       </motion.div>
+
+      <AnimatePresence>
+        {isCookModeActive && (
+          <CookModePanel
+            steps={recipe.steps}
+            recipeName={recipe.name}
+            ingredients={recipe.allIngs}
+            currentLanguage={currentLanguage}
+            onClose={() => setIsCookModeActive(false)}
+            onComplete={() => {
+              setIsCookModeActive(false);
+              onLogCooked();
+            }}
+          />
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

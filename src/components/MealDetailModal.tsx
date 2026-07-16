@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
-import { motion } from "motion/react";
-import { X, Youtube, ExternalLink, Bookmark, HelpCircle, List, ChefHat } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import { X, Youtube, ExternalLink, Bookmark, HelpCircle, List, ChefHat, Sparkles } from "lucide-react";
 import { MealDetail, IngredientMeasure } from "../types";
+import CookModePanel from "./CookModePanel";
+import { getRecipeAllergens } from "../utils/allergenHelper";
 
 function IngredientsChecklist({ list }: { list: IngredientMeasure[] }) {
   const [checkedItems, setCheckedItems] = useState<Record<number, boolean>>({});
@@ -65,6 +67,7 @@ interface MealDetailModalProps {
   onClose: () => void;
   isFavorited: boolean;
   onToggleFavorite: () => void;
+  currentLanguage?: string;
 }
 
 export default function MealDetailModal({
@@ -73,10 +76,12 @@ export default function MealDetailModal({
   onClose,
   isFavorited,
   onToggleFavorite,
+  currentLanguage = "en",
 }: MealDetailModalProps) {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [detail, setDetail] = useState<MealDetail | null>(null);
+  const [isCookModeActive, setIsCookModeActive] = useState(false);
 
   useEffect(() => {
     async function fetchMealDetail() {
@@ -187,6 +192,12 @@ export default function MealDetailModal({
                     {detail.strArea}
                   </span>
                 )}
+                {getRecipeAllergens({ name: mealName, allIngs: ingredientsList.map(i => i.ingredient) }).map(allg => (
+                  <span key={allg} className="px-2.5 py-0.5 text-xs font-semibold bg-rose-600/90 text-white rounded-full flex items-center gap-1 border border-rose-500/30 shadow-sm">
+                    <span>⚠️</span>
+                    <span>Contains {allg}</span>
+                  </span>
+                ))}
               </div>
             )}
             <h2 className="text-xl sm:text-2xl font-bold tracking-tight line-clamp-2">
@@ -227,10 +238,22 @@ export default function MealDetailModal({
 
                 {/* Step-by-Step Instructions */}
                 <div>
-                  <h3 className="text-base font-bold text-slate-800 mb-3 flex items-center gap-1.5 border-b pb-1.5 border-slate-100">
-                    <ChefHat className="w-4.5 h-4.5 text-teal-600" />
-                    How to Prepare
-                  </h3>
+                  <div className="flex flex-wrap justify-between items-center gap-2 mb-3 border-b pb-1.5 border-slate-100">
+                    <h3 className="text-base font-bold text-slate-800 flex items-center gap-1.5">
+                      <ChefHat className="w-4.5 h-4.5 text-teal-600" />
+                      How to Prepare
+                    </h3>
+                    <button
+                      type="button"
+                      id="start-meal-cook-mode-btn"
+                      onClick={() => setIsCookModeActive(true)}
+                      className="flex items-center gap-1.5 px-3 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-full text-xs font-bold transition-all active:scale-95 shadow-sm cursor-pointer"
+                      title="Enter immersive full screen step-by-step cooking mode"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+                      <span>Start Cook Mode 🍳</span>
+                    </button>
+                  </div>
                   <div className="space-y-3.5 text-slate-600 text-sm leading-relaxed">
                     {getInstructionsList(detail.strInstructions).length > 0 ? (
                       getInstructionsList(detail.strInstructions).map((item, idx) => (
@@ -291,6 +314,21 @@ export default function MealDetailModal({
           </a>
         </div>
       </motion.div>
+
+      <AnimatePresence>
+        {isCookModeActive && detail && (
+          <CookModePanel
+            steps={getInstructionsList(detail.strInstructions)}
+            recipeName={mealName}
+            ingredients={ingredientsList.map(item => `${item.measure} ${item.ingredient}`)}
+            currentLanguage={currentLanguage}
+            onClose={() => setIsCookModeActive(false)}
+            onComplete={() => {
+              setIsCookModeActive(false);
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

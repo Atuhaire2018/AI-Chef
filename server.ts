@@ -48,6 +48,30 @@ function getAIClient(): GoogleGenAI {
   return aiClient;
 }
 
+async function generateContentWithRetry(ai: GoogleGenAI, options: any): Promise<any> {
+  const modelsToTry = ["gemini-3.5-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
+  let lastError: any = null;
+  for (let i = 0; i < modelsToTry.length; i++) {
+    const model = modelsToTry[i];
+    try {
+      console.log(`[Gemini API] Attempting generateContent with model: ${model}`);
+      const response = await ai.models.generateContent({
+        ...options,
+        model: model
+      });
+      return response;
+    } catch (err: any) {
+      console.warn(`[Gemini API] Model ${model} failed:`, err.message || err);
+      lastError = err;
+      if (i < modelsToTry.length - 1) {
+        console.log(`[Gemini API] Pausing 1500ms before falling back to next model...`);
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      }
+    }
+  }
+  throw lastError;
+}
+
 function generateFallbackRecipes(ings: string[], filters: any): any[] {
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
   const primary1 = ings[0] ? cap(ings[0]) : "Garden Fresh";
@@ -200,8 +224,17 @@ app.get("/api/health", (req, res) => {
 });
 
 // REST SQL Database Sync and Session Management Endpoints
+const dbEnabled = !!process.env.SQL_HOST;
+
 app.post("/api/auth/sync", requireAuth, async (req: AuthRequest, res) => {
   try {
+    if (!dbEnabled) {
+      res.json({
+        disabled: true,
+        message: "Cloud SQL is not provisioned or configured. Using local-first persistence."
+      });
+      return;
+    }
     const firebaseUser = req.user!;
     const dbUser = await getOrCreateUser(firebaseUser.uid, firebaseUser.email || "");
     const userData = await getUserData(dbUser.id);
@@ -221,6 +254,10 @@ app.post("/api/auth/sync", requireAuth, async (req: AuthRequest, res) => {
 
 app.post("/api/sync-pantry", requireAuth, async (req: AuthRequest, res) => {
   try {
+    if (!dbEnabled) {
+      res.json({ disabled: true, success: true });
+      return;
+    }
     const { userId, pantry } = req.body;
     if (!userId || !Array.isArray(pantry)) {
       res.status(400).json({ error: "Missing required parameters." });
@@ -235,6 +272,10 @@ app.post("/api/sync-pantry", requireAuth, async (req: AuthRequest, res) => {
 
 app.post("/api/save-recipe", requireAuth, async (req: AuthRequest, res) => {
   try {
+    if (!dbEnabled) {
+      res.json({ disabled: true, success: true });
+      return;
+    }
     const { userId, recipe } = req.body;
     if (!userId || !recipe) {
       res.status(400).json({ error: "Missing required parameters." });
@@ -249,6 +290,10 @@ app.post("/api/save-recipe", requireAuth, async (req: AuthRequest, res) => {
 
 app.post("/api/delete-recipe", requireAuth, async (req: AuthRequest, res) => {
   try {
+    if (!dbEnabled) {
+      res.json({ disabled: true, success: true });
+      return;
+    }
     const { userId, apiRecipeId } = req.body;
     if (!userId || !apiRecipeId) {
       res.status(400).json({ error: "Missing required parameters." });
@@ -263,6 +308,10 @@ app.post("/api/delete-recipe", requireAuth, async (req: AuthRequest, res) => {
 
 app.post("/api/sync-cart", requireAuth, async (req: AuthRequest, res) => {
   try {
+    if (!dbEnabled) {
+      res.json({ disabled: true, success: true });
+      return;
+    }
     const { userId, cart } = req.body;
     if (!userId || !Array.isArray(cart)) {
       res.status(400).json({ error: "Missing required parameters." });
@@ -277,6 +326,10 @@ app.post("/api/sync-cart", requireAuth, async (req: AuthRequest, res) => {
 
 app.post("/api/add-cooking-history", requireAuth, async (req: AuthRequest, res) => {
   try {
+    if (!dbEnabled) {
+      res.json({ disabled: true, success: true });
+      return;
+    }
     const { userId, historyItem } = req.body;
     if (!userId || !historyItem) {
       res.status(400).json({ error: "Missing required parameters." });
@@ -291,6 +344,10 @@ app.post("/api/add-cooking-history", requireAuth, async (req: AuthRequest, res) 
 
 app.post("/api/clear-cooking-history", requireAuth, async (req: AuthRequest, res) => {
   try {
+    if (!dbEnabled) {
+      res.json({ disabled: true, success: true });
+      return;
+    }
     const { userId } = req.body;
     if (!userId) {
       res.status(400).json({ error: "Missing required parameters." });
@@ -542,6 +599,9 @@ app.post("/api/recipes", async (req, res) => {
             if (filters.dietary && filters.dietary.length > 0) {
               requirements.push(`Dietary restrictions: ${filters.dietary.join(", ")}`);
             }
+            if (filters.excludedAllergens && filters.excludedAllergens.length > 0) {
+              requirements.push(`STRICT EXCLUSION - MUST NOT CONTAIN ANY OF THE FOLLOWING ALLERGEN INGREDIENTS OR DERIVATIVES: ${filters.excludedAllergens.join(", ")}`);
+            }
             if (filters.time) {
               requirements.push(`Max preparation and cook time: ${filters.time} minutes`);
             }
@@ -565,12 +625,12 @@ Suggest exactly 4 unique, delicious, and highly relevant recipes that MUST utili
             "You are Chef Gemini, a high-end Michelin-starred computational chef. " +
             "Create high-quality, highly relevant recipes based on the user's available ingredients. Each recipe MUST use at least one of the user's input ingredients as a key component. " +
             "Be concise and clear in step-by-step cooking directions to optimize response speed. " +
+            "If the request specifies excluded allergens, strictly avoid any ingredients or items containing those allergens (e.g. no butter/cheese/milk for Dairy, no wheat/flour/pasta/soy-sauce for Gluten). " +
             "Classify each ingredient in the cooking ingredients list as either 'used' (which matches the list of user input ingredients perfectly) or 'missing' (other essential elements they need to buy or prepare). " +
             "Provide complete real-world instruction steps and accurate ingredients with measurements in the 'allIngs' array. " +
             "Assign a fun, relevant emoji to represent each dish.";
 
-          const response = await ai.models.generateContent({
-            model: "gemini-3.5-flash",
+          const response = await generateContentWithRetry(ai, {
             contents: userPrompt,
             config: {
               systemInstruction,
@@ -621,11 +681,16 @@ Suggest exactly 4 unique, delicious, and highly relevant recipes that MUST utili
                       type: Type.ARRAY,
                       items: { type: Type.STRING },
                       description: "Clear, sequential preparation directions."
+                    },
+                    allergens: {
+                      type: Type.ARRAY,
+                      items: { type: Type.STRING },
+                      description: "Potential food allergens present in this recipe, e.g., 'Dairy', 'Gluten', 'Eggs', 'Nuts', 'Soy', 'Shellfish', 'Fish', 'Sesame'."
                     }
                   },
                   required: [
                     "id", "name", "emoji", "time", "difficulty", "cuisine", 
-                    "servings", "desc", "overview", "marketPrice", "youtubeQuery", "used", "missing", "allIngs", "steps", "nutritional"
+                    "servings", "desc", "overview", "marketPrice", "youtubeQuery", "used", "missing", "allIngs", "steps", "nutritional", "allergens"
                   ]
                 }
               }
@@ -704,8 +769,7 @@ app.post("/api/scan", async (req, res) => {
                 "Return only names as simple lowercase singular nouns. Return a JSON list of strings.",
         };
 
-        const response = await ai.models.generateContent({
-          model: "gemini-3.5-flash",
+        const response = await generateContentWithRetry(ai, {
           contents: {
             parts: [imagePart, textPart]
           },

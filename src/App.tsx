@@ -8,6 +8,8 @@ import { onAuthStateChanged, signInWithPopup, signOut, GoogleAuthProvider } from
 import { LogIn, LogOut, RefreshCw, Eye, Trash2, CalendarRange, Sparkles, ClipboardCheck, Wifi, WifiOff, Settings } from "lucide-react";
 import { CURATED_RECIPES } from "./data/curatedRecipes";
 import { generate1000Languages, LOCALIZATIONS, t as globalT } from "./data/languages";
+import CookModePanel from "./components/CookModePanel";
+import { COMMON_ALLERGENS, getRecipeAllergens } from "./utils/allergenHelper";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -184,8 +186,11 @@ export default function App() {
     dietary: [],
     time: null,
     difficulty: null,
-    cuisine: null
+    cuisine: null,
+    excludedAllergens: []
   });
+
+  const [directCookRecipe, setDirectCookRecipe] = useState<AIRecipe | null>(null);
 
   const [recipes, setRecipes] = useState<AIRecipe[]>([]);
   const [savedRecipes, setSavedRecipes] = useState<AIRecipe[]>([]);
@@ -403,7 +408,14 @@ export default function App() {
       });
       if (response.ok) {
         const data = await response.json();
-        setSqlUserId(data.user.id);
+        if (data.disabled) {
+          console.log("Cloud SQL database is not configured. Running in high-fidelity offline-first local mode.");
+          setSqlUserId(null);
+          return;
+        }
+        if (data.user) {
+          setSqlUserId(data.user.id);
+        }
         
         // Sync online authoritative data into local state
         if (data.pantry) {
@@ -423,10 +435,10 @@ export default function App() {
           localStorage.setItem("pantry_cooking_history", JSON.stringify(data.history));
         }
       } else {
-        console.error("SQL Synced error:", await response.text());
+        console.warn("SQL Synced connection inactive:", await response.text());
       }
-    } catch (e) {
-      console.error("Error synchronizing profile data with Cloud SQL:", e);
+    } catch (e: any) {
+      console.log("Cloud SQL synchronizer not active: using secure client-side database storage.", e?.message || e);
     } finally {
       setSyncing(false);
     }
@@ -1614,6 +1626,11 @@ export default function App() {
                 {/* Recipe lists suggestions */}
                 {!loading && recipes.length > 0 && (() => {
                   const filteredRecipes = recipes.filter(r => {
+                    if (filters.excludedAllergens && filters.excludedAllergens.length > 0) {
+                      const detected = getRecipeAllergens(r);
+                      const isExcluded = filters.excludedAllergens.some(allg => detected.includes(allg as any));
+                      if (isExcluded) return false;
+                    }
                     const q = recipeSearchQuery.toLowerCase().trim();
                     if (!q) return true;
                     return r.name.toLowerCase().includes(q) || 
@@ -1779,6 +1796,7 @@ export default function App() {
                               isSaved={isSaved(r)} 
                               toggleSave={() => handleToggleSave(r)} 
                               onOpen={() => setSelectedRecipe(r)} 
+                              onStartCooking={() => setDirectCookRecipe(r)}
                               rating={ratings[r.name] || 0}
                             />
                           ))}
@@ -1830,6 +1848,7 @@ export default function App() {
                           isSaved={true} 
                           toggleSave={() => handleToggleSave(r)} 
                           onOpen={() => setSelectedRecipe(r)} 
+                          onStartCooking={() => setDirectCookRecipe(r)}
                           rating={ratings[r.name] || 0}
                         />
                       ))}
@@ -2510,7 +2529,7 @@ export default function App() {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                 <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, fontWeight: 900, color: C.text }}>Cook Settings</div>
                 <button 
-                  onClick={() => setFilters({ dietary: [], time: null, difficulty: null, cuisine: null })} 
+                  onClick={() => setFilters({ dietary: [], time: null, difficulty: null, cuisine: null, excludedAllergens: [] })} 
                   style={{ background: "none", border: "none", fontSize: 12, cursor: "pointer", color: C.accent, fontWeight: 700 }}
                 >
                   Reset all
@@ -2526,6 +2545,25 @@ export default function App() {
                       label={d} 
                       selected={sel} 
                       onClick={() => setFilters(p => ({ ...p, dietary: sel ? p.dietary.filter(x => x !== d) : [...p.dietary, d] }))} 
+                    />
+                  );
+                })}
+              </FilterSection>
+
+              <FilterSection title="Exclude Allergens">
+                {COMMON_ALLERGENS.map(allg => {
+                  const sel = (filters.excludedAllergens || []).includes(allg);
+                  return (
+                    <FilterChip 
+                      key={allg} 
+                      label={"🚫 No " + allg} 
+                      selected={sel} 
+                      onClick={() => setFilters(p => ({ 
+                        ...p, 
+                        excludedAllergens: sel 
+                          ? (p.excludedAllergens || []).filter(x => x !== allg) 
+                          : [...(p.excludedAllergens || []), allg] 
+                      }))} 
                     />
                   );
                 })}
@@ -3143,6 +3181,23 @@ export default function App() {
           />
         )}
       </AnimatePresence>
+
+      {/* DIRECT DASHBOARD INITIATED STEP-BY-STEP COOKING MODE */}
+      <AnimatePresence>
+        {directCookRecipe && (
+          <CookModePanel
+            steps={directCookRecipe.steps}
+            recipeName={directCookRecipe.name}
+            ingredients={directCookRecipe.allIngs}
+            currentLanguage={currentLanguage}
+            onClose={() => setDirectCookRecipe(null)}
+            onComplete={() => {
+              setDirectCookRecipe(null);
+              handleLogCooked(directCookRecipe);
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -3153,12 +3208,14 @@ function RecipeCard({
   isSaved, 
   toggleSave, 
   onOpen,
+  onStartCooking,
   rating = 0
 }: { 
   r: AIRecipe; 
   isSaved: boolean; 
   toggleSave: () => void; 
   onOpen: () => void;
+  onStartCooking?: () => void;
   rating?: number;
   key?: any;
 }) {
@@ -3221,6 +3278,23 @@ function RecipeCard({
           <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 4, background: "#FAF6F0", color: C.muted, fontWeight: 700, border: "1px solid #F0E8DD" }}>⏱ {r.time}m</span>
           <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 4, background: "#FAF6F0", color: C.muted, fontWeight: 700, border: "1px solid #F0E8DD" }}>👨‍🍳 {r.difficulty}</span>
           <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 4, background: "#FAF6F0", color: C.muted, fontWeight: 700, border: "1px solid #F0E8DD" }}>🧠 {r.cuisine}</span>
+          {getRecipeAllergens(r).map(allg => (
+            <span 
+              key={allg} 
+              style={{ 
+                fontSize: 9, 
+                padding: "2px 6px", 
+                borderRadius: 4, 
+                background: "#FEF2F2", 
+                color: "#EF4444", 
+                fontWeight: 700, 
+                border: "1px solid #FEE2E2" 
+              }}
+              title="Contains allergen"
+            >
+              ⚠️ {allg}
+            </span>
+          ))}
         </div>
         
         {/* have vs missing checklist status & YouTube */}
@@ -3232,31 +3306,60 @@ function RecipeCard({
             )}
           </div>
           
-          <a
-            href={`https://www.youtube.com/results?search_query=${encodeURIComponent(r.youtubeQuery || `how to cook ${r.name} tutorial`)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => {
-              e.stopPropagation();
-            }}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              fontSize: 10,
-              fontWeight: 800,
-              color: "white",
-              background: "#FF0000",
-              padding: "4px 10px",
-              borderRadius: 10,
-              textDecoration: "none",
-              boxShadow: "0 2px 4px rgba(255, 0, 0, 0.15)",
-              transition: "transform 0.1s"
-            }}
-            className="hover:scale-105 active:scale-95 hover:bg-[#CC0000]"
-          >
-            <span>▶</span> Watch Guide
-          </a>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {onStartCooking && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onStartCooking();
+                }}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  fontSize: 10,
+                  fontWeight: 800,
+                  color: "white",
+                  background: C.primary,
+                  padding: "4px 10px",
+                  borderRadius: 10,
+                  border: "none",
+                  boxShadow: `0 2px 4px ${C.primary}30`,
+                  cursor: "pointer",
+                  transition: "transform 0.1s"
+                }}
+                className="hover:scale-105 active:scale-95"
+              >
+                🍳 Cook
+              </button>
+            )}
+            
+            <a
+              href={`https://www.youtube.com/results?search_query=${encodeURIComponent(r.youtubeQuery || `how to cook ${r.name} tutorial`)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => {
+                e.stopPropagation();
+              }}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                fontSize: 10,
+                fontWeight: 800,
+                color: "white",
+                background: "#FF0000",
+                padding: "4px 10px",
+                borderRadius: 10,
+                textDecoration: "none",
+                boxShadow: "0 2px 4px rgba(255, 0, 0, 0.15)",
+                transition: "transform 0.1s"
+              }}
+              className="hover:scale-105 active:scale-95 hover:bg-[#CC0000]"
+            >
+              <span>▶</span> Watch Guide
+            </a>
+          </div>
         </div>
       </div>
       

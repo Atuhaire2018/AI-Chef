@@ -37,6 +37,7 @@ export interface AIRecipe {
   difficulty: Difficulty;
   cuisine: string;
   dietaryTags?: string[];
+  allergens?: string[]; // Optional pre-calculated allergens list
   servings: number;
   desc: string;
   overview: string;
@@ -54,6 +55,7 @@ export interface FilterState {
   time: number | null;
   difficulty: Difficulty | null;
   cuisine: string | null;
+  excludedAllergens?: string[];
 }
 
 export interface CookingHistoryItem {
