@@ -215,6 +215,11 @@ export default function App() {
 
   // Statuses
   const [recipeEngine, setRecipeEngine] = useState<"instant" | "creative">("instant");
+  const [consultWeb, setConsultWeb] = useState<boolean>(false);
+  const [fontPreference, setFontPreference] = useState<string>(localStorage.getItem("pantry_font") || "sans");
+  const [layoutDensity, setLayoutDensity] = useState<string>(localStorage.getItem("pantry_density") || "comfortable");
+  const [narrationSpeed, setNarrationSpeed] = useState<number>(parseFloat(localStorage.getItem("pantry_narration_speed") || "1.0"));
+  const [soundOn, setSoundOn] = useState<boolean>(localStorage.getItem("pantry_sound") !== "false");
   const [loading, setLoading] = useState<boolean>(false);
   const [scanning, setScanning] = useState<boolean>(false);
   const [scanMsg, setScanMsg] = useState<string>("");
@@ -924,7 +929,8 @@ export default function App() {
         body: JSON.stringify({
           ings,
           filters,
-          engine: recipeEngine
+          engine: recipeEngine,
+          consultWeb
         })
       });
 
@@ -1130,7 +1136,8 @@ export default function App() {
           boxShadow: "0 12px 36px rgba(0,0,0,0.12)",
           border: `1px solid rgba(0,0,0,0.06)`,
           overflow: "hidden",
-          position: "relative"
+          position: "relative",
+          fontFamily: fontPreference === "sans" ? "var(--font-sans)" : (fontPreference === "serif" ? "var(--font-serif)" : "var(--font-mono)")
         }}
       >
         {/* HEADER */}
@@ -1229,6 +1236,9 @@ export default function App() {
             </div>
             <div style={{ fontSize: 12, color: `${C.white}80`, marginTop: 6 }}>
               Scan, select ingredients · get instant recipes
+            </div>
+            <div style={{ fontSize: 11, fontStyle: "italic", color: `${C.white}90`, marginTop: 8, opacity: 0.95, borderTop: "1px solid rgba(255,255,255,0.15)", paddingTop: 6, fontFamily: "'Playfair Display', serif" }}>
+              "Made by the Chefs, trusted by the chefs, and approved by the chefs"
             </div>
           </div>
         </div>
@@ -1549,6 +1559,47 @@ export default function App() {
                         )
                     }
                   </div>
+
+                  {!activeOffline && (
+                    <div style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      background: consultWeb ? "rgba(30,61,47,0.04)" : "rgba(0,0,0,0.02)",
+                      border: consultWeb ? `1px dashed ${C.primary}` : `1px dashed ${C.border}`,
+                      padding: "8px 12px",
+                      borderRadius: 12,
+                      marginTop: 6
+                    }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                        <span style={{ fontSize: 11, fontWeight: 750, color: C.text }}>
+                          🌐 Consult the Website (Search Grounding)
+                        </span>
+                        <span style={{ fontSize: 9, color: C.muted }}>
+                          Consult live Google Search to discover unlimited recipes.
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setConsultWeb(!consultWeb);
+                        }}
+                        style={{
+                          background: consultWeb ? C.primary : "#E2E8F0",
+                          color: consultWeb ? "white" : C.muted,
+                          border: "none",
+                          borderRadius: 20,
+                          padding: "4px 10px",
+                          fontSize: 10,
+                          fontWeight: 850,
+                          cursor: "pointer",
+                          transition: "all 0.15s"
+                        }}
+                      >
+                        {consultWeb ? "ACTIVE" : "OFF"}
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Find Recipes Actions */}
@@ -3074,6 +3125,150 @@ export default function App() {
                 </div>
               </div>
 
+              {/* GOURMET SUITE CUSTOMIZER SETTINGS */}
+              <div style={{ marginBottom: 24, background: "#FAF8F4", padding: 14, borderRadius: 20, border: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 11, color: C.muted, fontWeight: 800, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 12, fontFamily: "monospace" }}>
+                  ⚙️ Gourmet Suite Display & Audio Config
+                </div>
+
+                {/* 1. Typography Selection */}
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: C.text, marginBottom: 6 }}>
+                    ✍️ Executive Typography Font Style
+                  </label>
+                  <div style={{ display: "flex", gap: 4, background: "rgba(0,0,0,0.04)", padding: 3, borderRadius: 10 }}>
+                    {[
+                      { id: "sans", name: "Inter Sans" },
+                      { id: "serif", name: "Elegant Serif" },
+                      { id: "mono", name: "Tech Mono" }
+                    ].map((f) => (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => {
+                          setFontPreference(f.id);
+                          localStorage.setItem("pantry_font", f.id);
+                        }}
+                        style={{
+                          flex: 1,
+                          background: fontPreference === f.id ? "white" : "transparent",
+                          color: fontPreference === f.id ? C.text : C.muted,
+                          border: "none",
+                          borderRadius: 8,
+                          padding: "6px 4px",
+                          fontSize: 10,
+                          fontWeight: fontPreference === f.id ? 800 : 500,
+                          cursor: "pointer",
+                          transition: "all 0.15s",
+                          boxShadow: fontPreference === f.id ? "0 2px 4px rgba(0,0,0,0.05)" : "none"
+                        }}
+                      >
+                        {f.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 2. Sizing Density */}
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: C.text, marginBottom: 6 }}>
+                    📐 Sizing Density Layout
+                  </label>
+                  <div style={{ display: "flex", gap: 4, background: "rgba(0,0,0,0.04)", padding: 3, borderRadius: 10 }}>
+                    {[
+                      { id: "comfortable", name: "🧸 Comfortable Spacing" },
+                      { id: "compact", name: "⚡ Compact Mode" }
+                    ].map((d) => (
+                      <button
+                        key={d.id}
+                        type="button"
+                        onClick={() => {
+                          setLayoutDensity(d.id);
+                          localStorage.setItem("pantry_density", d.id);
+                        }}
+                        style={{
+                          flex: 1,
+                          background: layoutDensity === d.id ? "white" : "transparent",
+                          color: layoutDensity === d.id ? C.text : C.muted,
+                          border: "none",
+                          borderRadius: 8,
+                          padding: "6px 4px",
+                          fontSize: 10,
+                          fontWeight: layoutDensity === d.id ? 800 : 500,
+                          cursor: "pointer",
+                          transition: "all 0.15s",
+                          boxShadow: layoutDensity === d.id ? "0 2px 4px rgba(0,0,0,0.05)" : "none"
+                        }}
+                      >
+                        {d.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 3. Narration Speed */}
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: C.text }}>
+                      🗣 Narration Speed Assistant
+                    </label>
+                    <span style={{ fontSize: 10, fontFamily: "monospace", fontWeight: "bold", color: C.accent }}>
+                      {narrationSpeed.toFixed(2)}x
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.5"
+                    max="2.0"
+                    step="0.25"
+                    value={narrationSpeed}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      setNarrationSpeed(val);
+                      localStorage.setItem("pantry_narration_speed", val.toString());
+                    }}
+                    style={{
+                      width: "100%",
+                      accentColor: C.primary,
+                      cursor: "pointer"
+                    }}
+                  />
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 8, color: C.muted, marginTop: 2 }}>
+                    <span>0.5x (Slow)</span>
+                    <span>1.0x (Normal)</span>
+                    <span>2.0x (Fast)</span>
+                  </div>
+                </div>
+
+                {/* 4. Sound & Audio Switches */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: C.text }}>
+                    🔊 Notification Sound Effects
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !soundOn;
+                      setSoundOn(next);
+                      localStorage.setItem("pantry_sound", next.toString());
+                    }}
+                    style={{
+                      background: soundOn ? C.green : "#CBD5E1",
+                      color: "white",
+                      border: "none",
+                      borderRadius: 20,
+                      padding: "4px 12px",
+                      fontSize: 10,
+                      fontWeight: 850,
+                      cursor: "pointer",
+                      transition: "all 0.15s"
+                    }}
+                  >
+                    {soundOn ? "🔊 ENABLED" : "🔇 MUTED"}
+                  </button>
+                </div>
+              </div>
+
               {/* COOKING LEGAL STUFF & OII STUDIOS PRIVACY POLICY */}
               <div style={{ background: "#FAF8F4", padding: 14, borderRadius: 20, border: `1px solid ${C.border}`, marginBottom: 14 }}>
                 <div style={{ fontSize: 11, color: C.muted, fontWeight: 800, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10, fontFamily: "monospace" }}>
@@ -3128,6 +3323,9 @@ export default function App() {
                 </div>
                 <div style={{ fontSize: 9, color: C.muted, marginTop: 2 }}>
                   © 2026 Oii Studios. All rights reserved. Version 2.4.0 (Gourmet Suite Edition).
+                </div>
+                <div style={{ fontSize: 11, fontStyle: "italic", color: C.accent, marginTop: 8, fontFamily: "'Playfair Display', serif", fontWeight: "bold" }}>
+                  "Made by the Chefs, trusted by the chefs, and approved by the chefs"
                 </div>
               </div>
 
@@ -3221,6 +3419,9 @@ function RecipeCard({
 }) {
   const currentTheme = localStorage.getItem("pantry_theme") || "forest";
   const C = THEMES[currentTheme as keyof typeof THEMES] || THEMES.forest;
+  const layoutDensity = localStorage.getItem("pantry_density") || "comfortable";
+  const isCompact = layoutDensity === "compact";
+  const activeFont = localStorage.getItem("pantry_font") || "sans";
 
   return (
     <motion.div 
@@ -3236,18 +3437,18 @@ function RecipeCard({
       style={{
         background: C.white,
         borderRadius: 16,
-        padding: 14,
-        marginBottom: 12,
+        padding: isCompact ? "10px 12px" : 14,
+        marginBottom: isCompact ? 8 : 12,
         border: `1px solid ${C.border}`,
         boxShadow: "0 2px 8px rgba(0,0,0,0.02)",
         cursor: "pointer",
         position: "relative",
         display: "flex",
         alignItems: "center",
-        gap: 12,
+        gap: isCompact ? 10 : 12,
       }}
     >
-      <div style={{ fontSize: 30, background: "#FDFBF7", padding: "8px", borderRadius: 12, border: "1px solid #FAF4EB", display: "flex", alignItems: "center", justifyContent: "center", width: 48, height: 48, flexShrink: 0 }}>
+      <div style={{ fontSize: isCompact ? 24 : 30, background: "#FDFBF7", padding: isCompact ? "4px" : "8px", borderRadius: 12, border: "1px solid #FAF4EB", display: "flex", alignItems: "center", justifyContent: "center", width: isCompact ? 40 : 48, height: isCompact ? 40 : 48, flexShrink: 0 }}>
         {r.emoji}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>

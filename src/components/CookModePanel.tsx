@@ -40,6 +40,7 @@ export default function CookModePanel({
   const [autoSpeak, setAutoSpeak] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [showIngredientsPeek, setShowIngredientsPeek] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
 
   // Timer states
   const [timerSeconds, setTimerSeconds] = useState<number | null>(null);
@@ -173,7 +174,8 @@ export default function CookModePanel({
     }
     
     utterance.lang = langCode;
-    utterance.rate = 1.0;
+    const speedStr = localStorage.getItem("pantry_narration_speed") || "1.0";
+    utterance.rate = parseFloat(speedStr) || 1.0;
     utterance.pitch = 1.0;
 
     utterance.onstart = () => setIsSpeaking(true);
@@ -226,6 +228,157 @@ export default function CookModePanel({
   };
 
   const progressPercentage = Math.round(((currentStepIdx + 1) / steps.length) * 100);
+
+  if (isMinimized) {
+    return (
+      <motion.div
+        layoutId="cook-mode-panel"
+        className="fixed bottom-4 right-4 w-96 max-w-[calc(100vw-2rem)] z-50 bg-[#1E3D2F] text-white border border-emerald-700/50 shadow-2xl rounded-2xl flex flex-col overflow-hidden font-sans select-none p-4"
+        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.9, y: 20 }}
+      >
+        {/* Minimized Header */}
+        <div className="flex items-center justify-between border-b border-white/10 pb-2 mb-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="p-1.5 bg-amber-500/20 text-amber-400 rounded-lg shrink-0">
+              <UtensilsCrossed className="w-4 h-4" />
+            </span>
+            <div className="min-w-0">
+              <span className="text-[9px] font-bold text-amber-400/80 uppercase tracking-widest font-mono block">
+                {tr("cookingActive", "Cooking in progress")}
+              </span>
+              <h4 className="text-xs font-bold font-serif text-white truncate">
+                {recipeName}
+              </h4>
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            {/* Maximize Button */}
+            <button
+              type="button"
+              onClick={() => setIsMinimized(false)}
+              className="p-1 rounded-lg hover:bg-white/10 text-white transition-all active:scale-95 cursor-pointer"
+              title="Expand to Full Screen"
+            >
+              <ArrowRight className="w-3.5 h-3.5 -rotate-45" />
+            </button>
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={() => {
+                alarmSoundEngine.stop();
+                onClose();
+              }}
+              className="p-1 rounded-lg hover:bg-rose-500/20 text-rose-300 transition-all active:scale-95 cursor-pointer"
+              title="Stop Cooking"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Minimized Body */}
+        <div className="space-y-3">
+          <div className="text-xs text-amber-300/90 font-mono font-bold uppercase">
+            {tr("step", "Step")} {currentStepIdx + 1} of {steps.length}
+          </div>
+          <p className="text-xs font-serif leading-relaxed text-slate-100 line-clamp-3">
+            {tr(steps[currentStepIdx], steps[currentStepIdx])}
+          </p>
+
+          {/* Compact timer if present */}
+          {timerSeconds !== null && (
+            <div className="flex items-center justify-between bg-emerald-950/40 border border-emerald-800/30 rounded-xl p-2.5">
+              <div className="flex items-center gap-2">
+                <Timer className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-xs font-mono font-bold text-white">
+                  {formatTime(timerSeconds)}
+                </span>
+                <span className="text-[9px] text-emerald-300/60 uppercase font-mono">
+                  ({timerRunning ? "Active" : "Paused"})
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setTimerRunning(!timerRunning)}
+                  className="p-1.5 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white transition-all active:scale-95 cursor-pointer"
+                >
+                  {timerRunning ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3 fill-current" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTimerSeconds(timerMax);
+                    setTimerRunning(false);
+                    alarmSoundEngine.stop();
+                  }}
+                  className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all active:scale-95 cursor-pointer"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Progress Bar */}
+          <div className="h-1 bg-white/10 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-amber-400 transition-all duration-300"
+              style={{ width: `${progressPercentage}%` }}
+            />
+          </div>
+
+          {/* Minimized Footer Controls */}
+          <div className="flex items-center justify-between pt-1">
+            <button
+              type="button"
+              onClick={handlePrev}
+              disabled={currentStepIdx === 0}
+              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-bold cursor-pointer ${
+                currentStepIdx === 0
+                  ? "opacity-30 cursor-not-allowed bg-white/5"
+                  : "bg-white/10 hover:bg-white/20 active:scale-95"
+              }`}
+            >
+              <ChevronLeft className="w-3 h-3" />
+              <span>Prev</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={toggleSpeech}
+              className={`p-1.5 rounded-lg text-xs cursor-pointer ${
+                isSpeaking ? "bg-amber-500 text-white" : "bg-white/5 hover:bg-white/10"
+              }`}
+              title="Speak step"
+            >
+              <Volume2 className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              type="button"
+              onClick={handleNext}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 active:scale-95 text-[#1E3D2F] font-extrabold text-[10px] cursor-pointer"
+            >
+              {currentStepIdx === steps.length - 1 ? (
+                <>
+                  <Check className="w-3 h-3" />
+                  <span>Done</span>
+                </>
+              ) : (
+                <>
+                  <span>Next</span>
+                  <ChevronRight className="w-3 h-3" />
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-[#1E3D2F] text-[#FAF8F4] overflow-hidden font-sans select-none">
@@ -282,6 +435,16 @@ export default function CookModePanel({
             title="Peek Ingredients checklist"
           >
             <List className="w-4 h-4" />
+          </button>
+
+          {/* Minimize Panel Trigger */}
+          <button
+            type="button"
+            onClick={() => setIsMinimized(true)}
+            className="p-2.5 rounded-xl bg-white/5 border border-white/10 text-white hover:bg-white/10 transition-all active:scale-95"
+            title="Minimize to Floating Widget"
+          >
+            <ArrowRight className="w-4 h-4 rotate-45" />
           </button>
 
           {/* Close Panel */}

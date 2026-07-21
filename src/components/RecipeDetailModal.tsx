@@ -18,7 +18,8 @@ import {
   Sparkles,
   DollarSign,
   Star,
-  ExternalLink
+  ExternalLink,
+  UtensilsCrossed
 } from "lucide-react";
 import { AIRecipe } from "../types";
 import { t } from "../data/languages";
@@ -62,6 +63,54 @@ const parseIngredientString = (ingLine: string): { measure: string; ingredient: 
   return { measure: "", ingredient: ingLine };
 };
 
+export function getRecipeCutlery(recipe: any): string[] {
+  if (recipe.cutlery && Array.isArray(recipe.cutlery) && recipe.cutlery.length > 0) {
+    return recipe.cutlery;
+  }
+  const tools = new Set<string>();
+  const stepsText = (recipe.steps || []).join(" ").toLowerCase();
+  const ingsText = (recipe.allIngs || []).join(" ").toLowerCase();
+
+  if (stepsText.includes("pan") || stepsText.includes("skillet") || stepsText.includes("fry") || stepsText.includes("sauté") || stepsText.includes("sear") || stepsText.includes("griddle")) {
+    tools.add("Frying Pan / Skillet");
+  }
+  if (stepsText.includes("oven") || stepsText.includes("bake") || stepsText.includes("roast") || stepsText.includes("tray") || stepsText.includes("sheet")) {
+    tools.add("Baking Sheet / Oven");
+  }
+  if (stepsText.includes("pot") || stepsText.includes("boil") || stepsText.includes("simmer") || stepsText.includes("soup") || stepsText.includes("cook pasta")) {
+    tools.add("Cooking Pot");
+  }
+  if (stepsText.includes("bowl") || stepsText.includes("whisk") || stepsText.includes("mix") || ingsText.includes("whisk")) {
+    tools.add("Mixing Bowl & Whisk");
+  }
+  if (stepsText.includes("knife") || stepsText.includes("chop") || stepsText.includes("slice") || stepsText.includes("cut") || stepsText.includes("dice") || stepsText.includes("mince")) {
+    tools.add("Chef's Knife & Cutting Board");
+  }
+  if (stepsText.includes("blend") || stepsText.includes("smoothie") || stepsText.includes("juicer") || stepsText.includes("processor")) {
+    tools.add("Blender / Food Processor");
+  }
+  if (stepsText.includes("grate") || stepsText.includes("shred")) {
+    tools.add("Cheese Grater");
+  }
+  if (stepsText.includes("spatula") || stepsText.includes("stir") || stepsText.includes("ladle")) {
+    tools.add("Spatula or Cooking Spoon");
+  }
+  if (stepsText.includes("strain") || stepsText.includes("drain") || stepsText.includes("colander")) {
+    tools.add("Colander / Strainer");
+  }
+  if (stepsText.includes("peel")) {
+    tools.add("Vegetable Peeler");
+  }
+  if (stepsText.includes("measure") || stepsText.includes("scale") || stepsText.includes("cup") || stepsText.includes("spoon")) {
+    tools.add("Measuring Cups & Spoons");
+  }
+
+  if (tools.size === 0) {
+    return ["Chef's Knife & Board", "Spatula or Cooking Spoon", "Standard Plate"];
+  }
+  return Array.from(tools);
+}
+
 interface RecipeDetailModalProps {
   recipe: AIRecipe;
   onClose: () => void;
@@ -75,6 +124,7 @@ interface RecipeDetailModalProps {
   cookCount: number;
   onAddToTasks?: (title: string, notes: string) => Promise<any>;
   currentLanguage: string;
+  onStartCooking?: () => void;
 }
 
 export default function RecipeDetailModal({
@@ -90,6 +140,7 @@ export default function RecipeDetailModal({
   cookCount,
   onAddToTasks,
   currentLanguage,
+  onStartCooking,
 }: RecipeDetailModalProps) {
   const [checkedIngredients, setCheckedIngredients] = useState<Record<string, boolean>>({});
   const [completedSteps, setCompletedSteps] = useState<Record<number, boolean>>({});
@@ -573,6 +624,25 @@ export default function RecipeDetailModal({
             </div>
           </div>
 
+          {/* Cutlery & Equipment Segment */}
+          <div className="space-y-3 bg-[#FAF8F4]/40 p-4.5 rounded-2xl border border-slate-100">
+            <h3 className="font-serif text-base font-bold text-slate-900 flex items-center gap-2">
+              <UtensilsCrossed className="w-4.5 h-4.5 text-[#1E3D2F]" />
+              {tr("cutleryRequired", "Cutlery & Equipment Required")}
+            </h3>
+            <div className="flex flex-wrap gap-1.5">
+              {getRecipeCutlery(recipe).map((tool) => (
+                <span
+                  key={tool}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-amber-100/40 text-slate-700 text-xs font-semibold rounded-xl shadow-3xs"
+                >
+                  <span className="text-amber-500">🍳</span>
+                  {tr(tool, tool)}
+                </span>
+              ))}
+            </div>
+          </div>
+
           {/* Stepper directions */}
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2 border-slate-200/60">
@@ -584,7 +654,13 @@ export default function RecipeDetailModal({
                 <button
                   type="button"
                   id="start-cook-mode-btn"
-                  onClick={() => setIsCookModeActive(true)}
+                  onClick={() => {
+                    if (onStartCooking) {
+                      onStartCooking();
+                    } else {
+                      setIsCookModeActive(true);
+                    }
+                  }}
                   className="flex items-center gap-1.5 px-3 py-1 bg-[#1E3D2F] hover:bg-[#152c22] text-white rounded-full text-xs font-bold transition-all active:scale-95 shadow-sm cursor-pointer"
                   title="Enter immersive full screen step-by-step cooking mode"
                 >

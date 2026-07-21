@@ -872,5 +872,167 @@ export const CURATED_RECIPES: CuratedRecipe[] = [
       "Carefully slide the coated fish into the hot oil, frying for 4-5 minutes per side until exceptionally crispy and golden brown."
     ],
     keywords: ["cod", "fish", "potato", "potatoes", "flour", "oil", "lemon"]
+  },
+  {
+    id: 125,
+    name: "Fresh Mint Lemonade",
+    emoji: "🍋",
+    time: 5,
+    difficulty: "Easy",
+    cuisine: "Beverage",
+    servings: 2,
+    desc: "An incredibly cooling, zesty lemonade infused with fresh muddled mint leaves.",
+    overview: "Perfect for warm days. Blending the lemons whole without the white pith or simply muddying fresh mint ensures an intense mint oils release without bitter undertones.",
+    marketPrice: "$1.00 - $1.50",
+    youtubeQuery: "Refreshing quick mint lemonade recipe",
+    nutritional: {
+      calories: 90,
+      protein: "0g",
+      carbs: "24g",
+      fat: "0g"
+    },
+    allIngs: [
+      "2 fresh Lemons, juiced",
+      "10-12 fresh Mint leaves",
+      "2 tbsp Sugar or honey",
+      "2 cups cold Water",
+      "1 cup Ice cubes"
+    ],
+    steps: [
+      "In a tall glass or small pitcher, muddle the fresh mint leaves gently with the sugar and lemon juice using a wooden spoon to release the natural mint oils.",
+      "Add the cold water and stir vigorously until the sugar is completely dissolved.",
+      "Fill two glasses with ice cubes, pour the prepared lemonade over the ice, and garnish with an extra lemon slice or mint sprig before serving."
+    ],
+    keywords: ["lemon", "lemons", "mint", "sugar", "water", "ice", "lemonade", "drink", "beverage", "fresh"]
+  },
+  {
+    id: 126,
+    name: "Creamy Iced Latte",
+    emoji: "☕",
+    time: 5,
+    difficulty: "Easy",
+    cuisine: "Beverage",
+    servings: 1,
+    desc: "A velvety, rich espresso combined with chilled milk over ice for an energetic lift.",
+    overview: "A coffeehouse standard. Brewing the espresso double strength ensures the coffee notes shine boldly through the milk even as the ice melts.",
+    marketPrice: "$1.50 - $2.50",
+    youtubeQuery: "Perfect creamy barista iced latte at home",
+    nutritional: {
+      calories: 120,
+      protein: "6g",
+      carbs: "12g",
+      fat: "5g"
+    },
+    allIngs: [
+      "1 double shot Espresso or 1 tbsp Instant Coffee",
+      "3/4 cup Whole or Oat Milk",
+      "1 tbsp Honey or maple syrup",
+      "1 cup Ice cubes",
+      "1/4 cup hot Water"
+    ],
+    steps: [
+      "If using instant coffee, dissolve it completely in the 1/4 cup of hot water. Otherwise, brew a fresh double shot of rich espresso.",
+      "Stir the honey or maple syrup into the hot coffee until fully incorporated.",
+      "Fill a tall glass to the top with fresh ice cubes.",
+      "Pour the chilled milk over the ice first, then slowly pour the sweetened coffee mixture over the top to create a gorgeous cascading layered effect. Stir before sipping."
+    ],
+    keywords: ["coffee", "milk", "sugar", "ice", "latte", "drink", "beverage", "iced"]
+  },
+  {
+    id: 127,
+    name: "Strawberry Banana Smoothie",
+    emoji: "🍓",
+    time: 5,
+    difficulty: "Easy",
+    cuisine: "Beverage",
+    servings: 2,
+    desc: "A classic thick blend of sweet strawberries, creamy bananas, and a touch of organic honey.",
+    overview: "A satisfying breakfast smoothie. Using a frozen sliced banana provides a thick, milkshake-like texture without needing to add extra ice which would dilute the fruit flavor.",
+    marketPrice: "$2.50 - $4.00",
+    youtubeQuery: "Classic strawberry banana fruit smoothie blender recipe",
+    nutritional: {
+      calories: 210,
+      protein: "5g",
+      carbs: "42g",
+      fat: "2g"
+    },
+    allIngs: [
+      "1 cup fresh Strawberries, hulled",
+      "1 ripe Banana, sliced",
+      "1/2 cup Greek Yogurt or Milk",
+      "1 tbsp Honey",
+      "1/2 cup Ice cubes"
+    ],
+    steps: [
+      "Add the strawberries, sliced banana, greek yogurt (or milk of your choice), and honey to the blender jar.",
+      "Add the ice cubes on top to help freeze-blend the ingredients.",
+      "Secure the lid and blend on high speed for 45-60 seconds until the mixture is completely velvety smooth with no visible fruit chunks. Serve immediately in tall glasses."
+    ],
+    keywords: ["strawberry", "strawberries", "banana", "bananas", "milk", "honey", "yogurt", "ice", "smoothie", "drink", "beverage"]
+  },
+  {
+    id: 128,
+    name: "Refreshing Ginger Tea",
+    emoji: "🍵",
+    time: 10,
+    difficulty: "Easy",
+    cuisine: "Beverage",
+    servings: 2,
+    desc: "A warm, soothing, and fiery herbal tea infused with sliced ginger, honey, and fresh lemon.",
+    overview: "A natural tonic. Simmering thin ginger root slices directly in boiling water extracts the potent, spicy gingerol oils for an authentic herbal remedy.",
+    marketPrice: "$0.80 - $1.20",
+    youtubeQuery: "How to make freshly brewed ginger honey lemon tea",
+    nutritional: {
+      calories: 45,
+      protein: "0g",
+      carbs: "12g",
+      fat: "0g"
+    },
+    allIngs: [
+      "2-inch piece of fresh Ginger root, sliced thin",
+      "2 cups Water",
+      "1 tbsp Honey",
+      "1/2 fresh Lemon, sliced"
+    ],
+    steps: [
+      "Wash and scrub the ginger root thoroughly, then cut into thin circular coins (no need to peel!).",
+      "In a small cooking pot, combine the water and sliced ginger slices. Bring to a boil over medium-high heat.",
+      "Reduce heat to low and let simmer gently for 8-10 minutes to extract the full ginger flavor.",
+      "Turn off the heat, stir in the honey and squeeze fresh lemon juice. Strain the hot tea into cups, garnish with a lemon slice, and enjoy hot."
+    ],
+    keywords: ["ginger", "water", "honey", "lemon", "tea", "drink", "beverage", "hot"]
+  },
+  {
+    id: 129,
+    name: "Tropical Mango Passion Mocktail",
+    emoji: "🍹",
+    time: 5,
+    difficulty: "Easy",
+    cuisine: "Beverage",
+    servings: 2,
+    desc: "An exotic bubbly mocktail made with sweet mango purée, fresh lime juice, and sparkling soda.",
+    overview: "An alcohol-free taste of the tropics. Layering dense mango juice first and topping with carbonated soda water creates a stunning and refreshing cocktail-style presentation.",
+    marketPrice: "$2.00 - $3.50",
+    youtubeQuery: "Refreshing tropical mango mocktail sparkling recipe",
+    nutritional: {
+      calories: 110,
+      protein: "1g",
+      carbs: "27g",
+      fat: "0g"
+    },
+    allIngs: [
+      "1/2 cup fresh Mango purée or juice",
+      "1/2 fresh Lime, juiced",
+      "1 cup Sparkling Club Soda or Sprite",
+      "5-6 fresh Mint leaves",
+      "1 cup Ice cubes"
+    ],
+    steps: [
+      "Squeeze fresh lime juice into a shaker or pitcher, and add the mango purée/juice and fresh mint leaves.",
+      "Muddle very gently to wake up the mint flavor without tearing the leaves.",
+      "Add ice cubes and shake or stir to chill the mixture.",
+      "Strain evenly into two glasses filled with ice. Top off each glass with sparkling club soda for a beautiful, fizzy finish. Garnish with lime wheels."
+    ],
+    keywords: ["mango", "passion", "fruit", "lime", "soda", "water", "mint", "sugar", "ice", "drink", "mocktail", "beverage", "cocktail"]
   }
 ];

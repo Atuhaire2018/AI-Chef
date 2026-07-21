@@ -424,13 +424,13 @@ app.post("/api/tasks/add", requireAuth, async (req: AuthRequest, res) => {
 
 app.post("/api/recipes", async (req, res) => {
   try {
-    const { ings, filters, engine = "instant" } = req.body;
+    const { ings, filters, engine = "instant", consultWeb = false } = req.body;
     if (!ings || !Array.isArray(ings) || ings.length === 0) {
        res.status(400).json({ error: "Missing ingredients parameter." });
        return;
     }
 
-    // 1. Generate unique cache key based on engine, sorted ingredients, and active filters (sorted keys)
+    // 1. Generate unique cache key based on engine, consultWeb, sorted ingredients, and active filters (sorted keys)
     const sortedIngsKey = ings.map(i => i.toLowerCase().trim()).sort().join(",");
     let orderedFilters: any = {};
     if (filters && typeof filters === "object") {
@@ -444,7 +444,7 @@ app.post("/api/recipes", async (req, res) => {
       });
     }
     const filterKey = JSON.stringify(orderedFilters);
-    const cacheKey = `${engine}:${sortedIngsKey}:${filterKey}`;
+    const cacheKey = `${engine}:${consultWeb}:${sortedIngsKey}:${filterKey}`;
 
     // 2. Check in-memory query cache for instant hits
     if (recipeCache.has(cacheKey)) {
@@ -454,7 +454,7 @@ app.post("/api/recipes", async (req, res) => {
 
     let results: any[] = [];
 
-    if (engine === "instant") {
+    if (engine === "instant" && !consultWeb) {
       // 3. SUPER-SPEED INSTANT ENGINE: Map over 30 staple recipes using dynamic heuristics
       const cleanUserIngs = ings.map(i => i.toLowerCase().trim()).filter(i => i.length >= 2);
       
@@ -617,13 +617,39 @@ app.post("/api/recipes", async (req, res) => {
             ? `Ensure all returned recipes adhere to these strict conditions: ${requirements.join(" | ")}.`
             : "";
 
+          const webSearchPromptAddition = consultWeb 
+            ? " Use Google Search grounding to search the web for authentic, popular, and real recipes that match. " +
+              "Return your response ONLY as a valid JSON array of 4 recipe objects matching the specified schema format, and do not include any other markdown formatting outside of a single ```json block. " +
+              "Each object in the array MUST strictly conform to this JSON structure: " +
+              "{\n" +
+              "  \"id\": 1,\n" +
+              "  \"name\": \"Recipe Name\",\n" +
+              "  \"emoji\": \"🍕\",\n" +
+              "  \"time\": 30,\n" +
+              "  \"difficulty\": \"Easy\",\n" +
+              "  \"cuisine\": \"Italian\",\n" +
+              "  \"servings\": 2,\n" +
+              "  \"desc\": \"Short one-sentence description.\",\n" +
+              "  \"overview\": \"Detailed 2-3 sentence overview.\",\n" +
+              "  \"marketPrice\": \"$4.50 - $6.00\",\n" +
+              "  \"youtubeQuery\": \"How to cook Italian pizza\",\n" +
+              "  \"nutritional\": { \"calories\": 400, \"protein\": \"15g\", \"carbs\": \"50g\", \"fat\": \"12g\" },\n" +
+              "  \"used\": [\"tomato\"],\n" +
+              "  \"missing\": [\"flour\"],\n" +
+              "  \"allIngs\": [\"1 tomato\", \"1 cup flour\"],\n" +
+              "  \"steps\": [\"Step 1\", \"Step 2\"],\n" +
+              "  \"allergens\": [\"Gluten\"]\n" +
+              "}. " +
+              "Do not include footnotes or citation markers (like [1]) in any fields. Output ONLY valid, parseable JSON."
+            : "";
+
           const userPrompt = `I have the following ingredients available in my kitchen: ${ings.join(", ")}.
-${requirementPrompt}
+${requirementPrompt}${webSearchPromptAddition}
 Suggest exactly 4 unique, delicious, and highly relevant recipes that MUST utilize at least one of these primary ingredients as a core element. Create realistic culinary steps and appropriate measures for other standard kitchen items.`;
 
           const systemInstruction = 
-            "You are Chef Gemini, a high-end Michelin-starred computational chef. " +
-            "Create high-quality, highly relevant recipes based on the user's available ingredients. Each recipe MUST use at least one of the user's input ingredients as a key component. " +
+            "You are Chef Gemini, a high-end Michelin-starred computational chef with access to Google Search grounding. " +
+            "Create high-quality, highly relevant real-world recipes based on the user's available ingredients. Each recipe MUST use at least one of the user's input ingredients as a key component. " +
             "Be concise and clear in step-by-step cooking directions to optimize response speed. " +
             "If the request specifies excluded allergens, strictly avoid any ingredients or items containing those allergens (e.g. no butter/cheese/milk for Dairy, no wheat/flour/pasta/soy-sauce for Gluten). " +
             "Classify each ingredient in the cooking ingredients list as either 'used' (which matches the list of user input ingredients perfectly) or 'missing' (other essential elements they need to buy or prepare). " +
@@ -634,8 +660,9 @@ Suggest exactly 4 unique, delicious, and highly relevant recipes that MUST utili
             contents: userPrompt,
             config: {
               systemInstruction,
-              responseMimeType: "application/json",
-              responseSchema: {
+              tools: consultWeb ? [{ googleSearch: {} }] : undefined,
+              responseMimeType: consultWeb ? undefined : "application/json",
+              responseSchema: consultWeb ? undefined : {
                 type: Type.ARRAY,
                 items: {
                   type: Type.OBJECT,
@@ -699,15 +726,19 @@ Suggest exactly 4 unique, delicious, and highly relevant recipes that MUST utili
 
           const jsonText = response.text || "[]";
           let cleanText = jsonText.trim();
-          if (cleanText.startsWith("```")) {
-            const firstLineEnd = cleanText.indexOf("\n");
-            if (firstLineEnd !== -1) {
-              cleanText = cleanText.substring(firstLineEnd + 1);
+          
+          // Robustly extract JSON block if wrapped in markdown or conversational text
+          const markdownRegex = /```(?:json)?\s*([\s\S]*?)\s*```/i;
+          const match = markdownRegex.exec(cleanText);
+          if (match) {
+            cleanText = match[1].trim();
+          } else {
+            // If no markdown block, extract between the first [ and last ]
+            const startIdx = cleanText.indexOf('[');
+            const endIdx = cleanText.lastIndexOf(']');
+            if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+              cleanText = cleanText.substring(startIdx, endIdx + 1);
             }
-            if (cleanText.endsWith("```")) {
-              cleanText = cleanText.substring(0, cleanText.length - 3);
-            }
-            cleanText = cleanText.trim();
           }
 
           results = JSON.parse(cleanText);
