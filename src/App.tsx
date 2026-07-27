@@ -9,7 +9,10 @@ import { LogIn, LogOut, RefreshCw, Eye, Trash2, CalendarRange, Sparkles, Clipboa
 import { CURATED_RECIPES } from "./data/curatedRecipes";
 import { generate1000Languages, LOCALIZATIONS, t as globalT } from "./data/languages";
 import CookModePanel from "./components/CookModePanel";
+import GlobalCutleryGuide from "./components/GlobalCutleryGuide";
 import { COMMON_ALLERGENS, getRecipeAllergens } from "./utils/allergenHelper";
+import SeasonalChefsTip from "./components/SeasonalChefsTip";
+import RecipeDifficultyBadge from "./components/RecipeDifficultyBadge";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -226,7 +229,7 @@ export default function App() {
   const [errorText, setErrorText] = useState<string | null>(null);
 
   // Tab View Navigation
-  const [activeTab, setActiveTab] = useState<"search" | "saved" | "shopping" | "history">("search");
+  const [activeTab, setActiveTab] = useState<"search" | "guide" | "saved" | "shopping" | "history">("search");
   const [filterOpen, setFilterOpen] = useState<boolean>(false);
   const [selectedRecipe, setSelectedRecipe] = useState<AIRecipe | null>(null);
 
@@ -1244,9 +1247,10 @@ export default function App() {
         </div>
 
         {/* TAB NAV */}
-        <div style={{ display: "flex", background: C.primary, padding: "0 16px 16px", flexShrink: 0 }}>
+        <div style={{ display: "flex", background: C.primary, padding: "0 16px 16px", flexShrink: 0, gap: 4, overflowX: "auto" }} className="scrollbar-thin">
           {[
             ["search", "🔍", `${t("discover")}`],
+            ["guide", "🍴", "Global Guide"],
             ["saved", "❤️", `${t("saved")}${savedRecipes.length ? ` (${savedRecipes.length})` : ""}`],
             ["shopping", "🛒", `${t("cart")}${cart.length ? ` (${cart.length})` : ""}`],
             ["history", "📖", `${t("history")}${history.length ? ` (${history.length})` : ""}`]
@@ -1355,6 +1359,53 @@ export default function App() {
                     </div>
                   </button>
                 </div>
+
+                {/* Global Cutlery & Appliance Feature Spotlight Banner */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("guide")}
+                  style={{
+                    width: "100%",
+                    background: "linear-gradient(135deg, #FAF8F4 0%, #F1EBE0 100%)",
+                    borderRadius: 16,
+                    padding: "12px 14px",
+                    border: `1px solid ${C.border}`,
+                    marginBottom: 14,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    cursor: "pointer",
+                    textAlign: "left",
+                    boxShadow: "0 2px 6px rgba(0,0,0,0.02)"
+                  }}
+                  className="hover:border-amber-700 transition-colors"
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 24, background: C.white, padding: "6px", borderRadius: 12, border: `1px solid ${C.border}` }}>
+                      🌍
+                    </span>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: C.text, display: "flex", alignItems: "center", gap: 6 }}>
+                        <span>Global Cutlery & Appliance Guide</span>
+                        <span style={{ fontSize: 9, background: C.primary, color: "white", padding: "2px 6px", borderRadius: 10, fontWeight: 800 }}>NEW</span>
+                      </div>
+                      <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>
+                        Chopsticks, Western formal settings, Injera, Sous Vide, Air Fryer & Wok standards
+                      </div>
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: C.primary }}>
+                    Explore →
+                  </span>
+                </button>
+
+                {/* Seasonal Produce & Chef's Tip Grounded Section */}
+                <SeasonalChefsTip 
+                  themeColors={C} 
+                  onAddIngredient={(ing) => toggleIng(ing)} 
+                  selectedIngredients={ings} 
+                />
 
                 {/* Camera Scan Box */}
                 <div style={{ background: C.white, borderRadius: 16, padding: 16, marginBottom: 14, border: `1px solid ${C.border}`, boxShadow: "0 2px 10px rgba(0,0,0,0.02)" }}>
@@ -1865,6 +1916,23 @@ export default function App() {
                     <div style={{ fontSize: 11, lineHeight: 1.4 }}>Hit "Find Recipes" to generate AI chef cookbooks based on your ingredients.</div>
                   </div>
                 )}
+              </motion.div>
+            )}
+
+            {/* GLOBAL CUTLERY & KITCHEN APPLIANCE GUIDE TAB */}
+            {activeTab === "guide" && (
+              <motion.div
+                key="guide"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+              >
+                <GlobalCutleryGuide
+                  themeColors={C}
+                  narrationSpeed={narrationSpeed}
+                  soundOn={soundOn}
+                />
               </motion.div>
             )}
 
@@ -3475,9 +3543,9 @@ function RecipeCard({
         <div style={{ fontSize: 11, color: C.muted, fontStyle: "italic", marginBottom: 6 }} className="truncate">
           "{r.desc}"
         </div>
-        <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 5 }}>
+        <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 5, alignItems: "center" }}>
           <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 4, background: "#FAF6F0", color: C.muted, fontWeight: 700, border: "1px solid #F0E8DD" }}>⏱ {r.time}m</span>
-          <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 4, background: "#FAF6F0", color: C.muted, fontWeight: 700, border: "1px solid #F0E8DD" }}>👨‍🍳 {r.difficulty}</span>
+          <RecipeDifficultyBadge difficulty={r.difficulty} variant="badge" size="sm" />
           <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 4, background: "#FAF6F0", color: C.muted, fontWeight: 700, border: "1px solid #F0E8DD" }}>🧠 {r.cuisine}</span>
           {getRecipeAllergens(r).map(allg => (
             <span 

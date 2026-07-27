@@ -25,6 +25,7 @@ import { AIRecipe } from "../types";
 import { t } from "../data/languages";
 import CookModePanel from "./CookModePanel";
 import { getRecipeAllergens } from "../utils/allergenHelper";
+import RecipeDifficultyBadge from "./RecipeDifficultyBadge";
 
 const CUISINE_IMAGES: Record<string, string> = {
   italian: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80&w=800",
@@ -301,10 +302,7 @@ export default function RecipeDetailModal({
                   <span>⏱ {recipe.time} {tr("minutes", "Min")}</span>
                 </div>
               )}
-              <div className="flex items-center gap-1.5 px-3 py-1 bg-black/40 border border-white/10 rounded-full text-xs font-semibold backdrop-blur-xs">
-                <Gauge className="w-3.5 h-3.5 text-emerald-400" />
-                <span>👨‍🍳 {tr(recipe.difficulty, recipe.difficulty)}</span>
-              </div>
+              <RecipeDifficultyBadge difficulty={recipe.difficulty} variant="badge" size="sm" />
               <div className="flex items-center gap-1.5 px-3 py-1 bg-black/40 border border-white/10 rounded-full text-xs font-semibold backdrop-blur-xs">
                 <Globe className="w-3.5 h-3.5 text-sky-400" />
                 <span>🌍 {tr(recipe.cuisine, recipe.cuisine)}</span>
@@ -319,6 +317,9 @@ export default function RecipeDetailModal({
 
         {/* Content Body */}
         <div className="flex-1 overflow-y-auto p-5 sm:p-7 space-y-6 scrollbar-thin">
+          
+          {/* Recipe Difficulty Visualization Meter */}
+          <RecipeDifficultyBadge difficulty={recipe.difficulty} variant="full" />
           
           {/* Interactive Star Rating Component */}
           <div className="bg-white border border-amber-150/60 rounded-2xl p-4 sm:p-4.5 space-y-3 sm:space-y-0 sm:flex sm:items-center sm:justify-between gap-4 shadow-xs border-dashed">
