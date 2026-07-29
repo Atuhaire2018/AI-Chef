@@ -24,7 +24,8 @@ import {
   Scissors,
   Wrench,
   Heart,
-  Lightbulb
+  Lightbulb,
+  ArrowUpDown
 } from "lucide-react";
 
 export interface GlobalCutleryGuideProps {
@@ -373,6 +374,7 @@ export const GlobalCutleryGuide: React.FC<GlobalCutleryGuideProps> = ({
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [sortBy, setSortBy] = useState<"default" | "title-asc" | "title-desc" | "region" | "category">("default");
   const [activeSectionId, setActiveSectionId] = useState<string>(GUIDE_SECTIONS[0].id);
   const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
 
@@ -393,6 +395,14 @@ export const GlobalCutleryGuide: React.FC<GlobalCutleryGuideProps> = ({
       s.summary.toLowerCase().includes(searchQuery.toLowerCase()) ||
       s.utensils.some((u) => u.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesCategory && matchesQuery;
+  });
+
+  const sortedSections = [...filteredSections].sort((a, b) => {
+    if (sortBy === "title-asc") return a.title.localeCompare(b.title);
+    if (sortBy === "title-desc") return b.title.localeCompare(a.title);
+    if (sortBy === "region") return a.region.localeCompare(b.region);
+    if (sortBy === "category") return a.category.localeCompare(b.category);
+    return 0;
   });
 
   // Audio narration handler
@@ -698,27 +708,55 @@ export const GlobalCutleryGuide: React.FC<GlobalCutleryGuideProps> = ({
         </motion.div>
       )}
 
-      {/* FILTER TABS & SEARCH BAR */}
+      {/* FILTER TABS & SEARCH BAR & SORT SELECTOR */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <div style={{ position: "relative" }}>
-          <Search size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: C.muted }} />
-          <input
-            type="text"
-            placeholder="Search utensils, appliances, or etiquette rules (e.g. chopsticks, sous vide, wok, fork)..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "10px 12px 10px 36px",
-              borderRadius: 12,
-              border: `1px solid ${C.border}`,
-              background: C.white,
-              fontSize: 12,
-              color: C.text,
-              outline: "none",
-              boxSizing: "border-box"
-            }}
-          />
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ position: "relative", flex: 1 }}>
+            <Search size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: C.muted }} />
+            <input
+              type="text"
+              placeholder="Search utensils, appliances, or etiquette rules (e.g. chopsticks, sous vide, wok, fork)..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "10px 12px 10px 36px",
+                borderRadius: 12,
+                border: `1px solid ${C.border}`,
+                background: C.white,
+                fontSize: 12,
+                color: C.text,
+                outline: "none",
+                boxSizing: "border-box"
+              }}
+            />
+          </div>
+
+          {/* SORT BY DROPDOWN */}
+          <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+            <ArrowUpDown size={14} style={{ position: "absolute", left: 10, color: C.muted, pointerEvents: "none" }} />
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as any)}
+              style={{
+                background: C.white,
+                border: `1px solid ${C.border}`,
+                borderRadius: 12,
+                padding: "10px 12px 10px 30px",
+                fontSize: 11,
+                fontWeight: 700,
+                color: C.text,
+                cursor: "pointer",
+                outline: "none"
+              }}
+            >
+              <option value="default">Sort: Recommended</option>
+              <option value="title-asc">Sort: Title (A – Z)</option>
+              <option value="title-desc">Sort: Title (Z – A)</option>
+              <option value="region">Sort: By Region</option>
+              <option value="category">Sort: By Category</option>
+            </select>
+          </div>
         </div>
 
         {/* CATEGORY SELECTOR CHIPS */}
@@ -757,7 +795,7 @@ export const GlobalCutleryGuide: React.FC<GlobalCutleryGuideProps> = ({
       <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14 }}>
         {/* TOP SCROLLING/LIST OF CARDS OR SELECTOR */}
         <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 6 }} className="scrollbar-thin">
-          {filteredSections.map((sec) => {
+          {sortedSections.map((sec) => {
             const isSelected = sec.id === activeSectionId;
             return (
               <button

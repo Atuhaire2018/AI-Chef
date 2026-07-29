@@ -135,16 +135,16 @@ export default function MealDetailModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+    <div className="fixed inset-0 z-50 flex flex-col bg-white w-full h-full min-h-screen p-0 m-0 overflow-hidden">
       {/* Backdrop Closer */}
       <div className="absolute inset-0" onClick={onClose} />
 
       <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 15 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 15 }}
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: 15 }}
         transition={{ duration: 0.2, ease: "easeOut" }}
-        className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col z-10"
+        className="relative w-full h-full max-w-full max-h-full bg-white rounded-none shadow-none overflow-hidden flex flex-col z-10 border-none"
       >
         {/* Header Image banner if preloaded/detail loaded */}
         <div className="relative h-48 sm:h-64 bg-slate-100 flex-shrink-0">

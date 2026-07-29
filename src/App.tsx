@@ -3,9 +3,10 @@ import { AnimatePresence, motion } from "motion/react";
 import { AIRecipe, FilterState, Difficulty, CookingHistoryItem } from "./types";
 import RecipeDetailModal from "./components/RecipeDetailModal";
 import { alarmSoundEngine } from "./utils/audio";
-import { auth, googleAuthProvider } from "./lib/firebase";
+import { auth, googleAuthProvider, db, isFirebaseAvailable, handleFirestoreError, OperationType } from "./lib/firebase";
 import { onAuthStateChanged, signInWithPopup, signOut, GoogleAuthProvider } from "firebase/auth";
-import { LogIn, LogOut, RefreshCw, Eye, Trash2, CalendarRange, Sparkles, ClipboardCheck, Wifi, WifiOff, Settings } from "lucide-react";
+import { doc, setDoc, getDocs, collection } from "firebase/firestore";
+import { LogIn, LogOut, RefreshCw, Eye, Trash2, CalendarRange, Sparkles, ClipboardCheck, Wifi, WifiOff, Settings, Bot, Share2, Check, Wand2, Image } from "lucide-react";
 import { CURATED_RECIPES } from "./data/curatedRecipes";
 import { generate1000Languages, LOCALIZATIONS, t as globalT } from "./data/languages";
 import CookModePanel from "./components/CookModePanel";
@@ -13,6 +14,8 @@ import GlobalCutleryGuide from "./components/GlobalCutleryGuide";
 import { COMMON_ALLERGENS, getRecipeAllergens } from "./utils/allergenHelper";
 import SeasonalChefsTip from "./components/SeasonalChefsTip";
 import RecipeDifficultyBadge from "./components/RecipeDifficultyBadge";
+import ClaudeOpusSupervisor from "./components/ClaudeOpusSupervisor";
+import AppSplashScreen from "./components/AppSplashScreen";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -228,10 +231,47 @@ export default function App() {
   const [scanMsg, setScanMsg] = useState<string>("");
   const [errorText, setErrorText] = useState<string | null>(null);
 
-  // Tab View Navigation
+  // Tab View Navigation & AI Supervisor Drawer State
+  const [showSplash, setShowSplash] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<"search" | "guide" | "saved" | "shopping" | "history">("search");
   const [filterOpen, setFilterOpen] = useState<boolean>(false);
+  const [supervisorOpen, setSupervisorOpen] = useState<boolean>(false);
   const [selectedRecipe, setSelectedRecipe] = useState<AIRecipe | null>(null);
+
+  // Autonomous Continuous Background AI Problem Scanner & Self-Healing Engine
+  useEffect(() => {
+    const runBackgroundScanAndHeal = async () => {
+      try {
+        await fetch("/api/system/opus-repair", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "auto_background_scan" })
+        });
+      } catch (e) {
+        // Silent background recovery
+      }
+    };
+    runBackgroundScanAndHeal();
+    const interval = setInterval(runBackgroundScanAndHeal, 15000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Deep-link check on initial page load (e.g., ?recipe=Classic%20Margherita%20Pizza)
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const recipeParam = params.get("recipe");
+      if (recipeParam) {
+        const decodedName = decodeURIComponent(recipeParam).trim().toLowerCase();
+        const match = CURATED_RECIPES.find(r => r.name.toLowerCase() === decodedName);
+        if (match) {
+          setSelectedRecipe(match);
+        }
+      }
+    } catch (e) {
+      // silent catch
+    }
+  }, []);
 
   // Kitchen Timer states
   const [timerSeconds, setTimerSeconds] = useState<number>(0);
@@ -333,7 +373,7 @@ export default function App() {
     } else if (timerSeconds === 0 && timerActive) {
       setTimerActive(false);
       setIsAlarmRinging(true);
-      alarmSoundEngine.play();
+      alarmSoundEngine.play(0); // Rings until cancelled
     }
     return () => clearInterval(interval);
   }, [timerActive, timerSeconds]);
@@ -349,8 +389,9 @@ export default function App() {
   const copyCartToClipboard = () => {
     if (cart.length === 0) return;
     const dateStr = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-    const activeItems = cart.filter(i => !checked.includes(i));
-    const checkedItems = cart.filter(i => checked.includes(i));
+    const safeCheckedArr = Array.isArray(checked) ? checked : [];
+    const activeItems = cart.filter(i => !safeCheckedArr.includes(i));
+    const checkedItems = cart.filter(i => safeCheckedArr.includes(i));
 
     let text = `🛒 FRIDGE CHEF - SHOPPING LIST (${dateStr})\n`;
     text += `========================================\n`;
@@ -391,7 +432,15 @@ export default function App() {
       if (storedCart) setCart(JSON.parse(storedCart));
 
       const storedChecked = localStorage.getItem("pantry_checked_cart");
-      if (storedChecked) setChecked(JSON.parse(storedChecked));
+      if (storedChecked) {
+        try {
+          const parsed = JSON.parse(storedChecked);
+          if (Array.isArray(parsed)) setChecked(parsed);
+          else setChecked([]);
+        } catch {
+          setChecked([]);
+        }
+      }
 
       const storedRatings = localStorage.getItem("pantry_recipe_ratings");
       if (storedRatings) setRatings(JSON.parse(storedRatings));
@@ -497,12 +546,48 @@ export default function App() {
     localStorage.setItem("cart_sort_order", cartSortOrder);
   }, [cartSortOrder]);
 
+  const syncWithFirestore = async (currentUser: any) => {
+    if (!isFirebaseAvailable || !db || !currentUser) return;
+    try {
+      const userRef = doc(db, "users", currentUser.uid);
+      await setDoc(userRef, {
+        userId: currentUser.uid,
+        email: currentUser.email || "",
+        displayName: currentUser.displayName || "",
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+
+      const recipesRef = collection(db, "users", currentUser.uid, "savedRecipes");
+      const snapshot = await getDocs(recipesRef);
+      if (!snapshot.empty) {
+        const fetched: AIRecipe[] = [];
+        snapshot.forEach(docSnap => {
+          const data = docSnap.data();
+          if (data.name) {
+            fetched.push(data as AIRecipe);
+          }
+        });
+        if (fetched.length > 0) {
+          setSavedRecipes(prev => {
+            const map = new Map();
+            prev.forEach(r => map.set(r.name, r));
+            fetched.forEach(r => map.set(r.name, r));
+            return Array.from(map.values());
+          });
+        }
+      }
+    } catch (err) {
+      console.warn("Optional Firestore sync notice:", err);
+    }
+  };
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         setUser(currentUser);
         const idToken = await currentUser.getIdToken();
         await syncWithCloudSQL(currentUser, idToken);
+        await syncWithFirestore(currentUser);
         
         if (googleAccessToken && googleAccessToken !== "null" && googleAccessToken !== "undefined") {
           loadGoogleTaskLists(googleAccessToken);
@@ -985,6 +1070,22 @@ export default function App() {
           }).catch(err => console.error("Sync save-recipe error:", err));
         });
       }
+      if (user && isFirebaseAvailable && db) {
+        try {
+          const recipeId = (recipe.id || recipe.name.toLowerCase().replace(/[^a-z0-9]/g, "_")).toString();
+          setDoc(doc(db, "users", user.uid, "savedRecipes", recipeId), {
+            recipeId,
+            name: recipe.name,
+            cuisine: recipe.cuisine || "",
+            time: recipe.time || 20,
+            desc: recipe.desc || "",
+            savedAt: new Date().toISOString(),
+            userId: user.uid
+          }, { merge: true }).catch(err => {
+            try { handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}/savedRecipes/${recipeId}`); } catch(e){}
+          });
+        } catch(e) {}
+      }
     }
     setSavedRecipes(updated);
     localStorage.setItem("pantry_recipes_saved", JSON.stringify(updated));
@@ -1077,21 +1178,22 @@ export default function App() {
   };
 
   const toggleCheck = (item: string) => {
-    const updated = checked.includes(item)
-      ? checked.filter((x) => x !== item)
-      : [...checked, item];
+    const safeCheckedArr = Array.isArray(checked) ? checked : [];
+    const updated = safeCheckedArr.includes(item)
+      ? safeCheckedArr.filter((x) => x !== item)
+      : [...safeCheckedArr, item];
     setChecked(updated);
     localStorage.setItem("pantry_checked_cart", JSON.stringify(updated));
   };
 
   const clearChecked = () => {
-    const remaining = cart.filter((item) => !checked.includes(item));
+    const safeCheckedArr = Array.isArray(checked) ? checked : [];
+    const remaining = cart.filter((item) => !safeCheckedArr.includes(item));
     setCart(remaining);
     localStorage.setItem("pantry_shopping_cart", JSON.stringify(remaining));
 
-    const remainingChecked = checked.filter((item) => !checked.includes(item));
-    setChecked(remainingChecked);
-    localStorage.setItem("pantry_checked_cart", JSON.stringify(remainingChecked));
+    setChecked([]);
+    localStorage.setItem("pantry_checked_cart", JSON.stringify([]));
 
     if (user && sqlUserId) {
       auth.currentUser?.getIdToken().then(token => {
@@ -1115,29 +1217,27 @@ export default function App() {
   ].filter(Boolean).length;
 
   return (
-    <div style={{ background: "#EDE8DE", minHeight: "100vh", display: "flex", justifyContent: "center", alignItems: "center", padding: "16px", boxSizing: "border-box" }} className="selection:bg-amber-500 selection:text-white">
-      {/* Handheld Device Shell Container */}
+    <div style={{ background: C.white, minHeight: "100vh", width: "100%", margin: 0, padding: 0, boxSizing: "border-box" }} className="selection:bg-amber-500 selection:text-white">
+      {/* X-Style App Launch Splash Screen */}
+      <AnimatePresence>
+        {showSplash && <AppSplashScreen onFinish={() => setShowSplash(false)} />}
+      </AnimatePresence>
+
+      {/* Full-bleed Edge-to-Edge Container */}
       <motion.div 
-        initial={{ opacity: 0, y: 40, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ 
-          type: "spring",
-          stiffness: 100,
-          damping: 16,
-          mass: 1.1,
-          duration: 0.8
-        }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.3 }}
         style={{
           width: "100%",
-          maxWidth: 850,
+          maxWidth: "100%",
           background: C.white,
-          height: "92vh",
-          minHeight: "720px",
+          minHeight: "100vh",
           display: "flex",
           flexDirection: "column",
-          borderRadius: 32,
-          boxShadow: "0 12px 36px rgba(0,0,0,0.12)",
-          border: `1px solid rgba(0,0,0,0.06)`,
+          borderRadius: 0,
+          boxShadow: "none",
+          border: "none",
           overflow: "hidden",
           position: "relative",
           fontFamily: fontPreference === "sans" ? "var(--font-sans)" : (fontPreference === "serif" ? "var(--font-serif)" : "var(--font-mono)")
@@ -1215,21 +1315,21 @@ export default function App() {
                   onClick={() => setSettingsOpen(true)}
                   title="Configure Themes, 1000+ Languages, Legal & Privacy Policies"
                   style={{
-                    background: "rgba(255,255,255,0.15)",
-                    border: "none",
+                    background: "rgba(255,255,255,0.2)",
+                    border: "1px solid rgba(255,255,255,0.3)",
                     borderRadius: 20,
-                    padding: "4px 10px",
+                    padding: "5px 12px",
                     color: C.white,
                     fontSize: 11,
-                    fontWeight: 700,
+                    fontWeight: 800,
                     display: "flex",
                     alignItems: "center",
-                    gap: 4,
+                    gap: 5,
                     cursor: "pointer",
                     transition: "all 0.2s"
                   }}
                 >
-                  <Settings className="w-3.5 h-3.5" style={{ opacity: 0.9 }} />
+                  <Settings className="w-3.5 h-3.5" style={{ opacity: 1 }} />
                   <span>Settings</span>
                 </button>
               </div>
@@ -1989,7 +2089,7 @@ export default function App() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
                   <div>
                     <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, fontWeight: 850, color: C.text, margin: 0 }}>Shopping Ingredients</h3>
-                    <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{cart.length} items · {checked.length} checked</div>
+                    <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{cart.length} items · {Array.isArray(checked) ? checked.length : 0} checked</div>
                   </div>
                   
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -2063,13 +2163,13 @@ export default function App() {
                           📋 {cartCopied ? "Copied!" : "Copy List"}
                         </button>
                       )}
-                      {checked.length > 0 && (
+                      {(Array.isArray(checked) ? checked.length : 0) > 0 && (
                         <button 
                           id="clear-checked-btn"
                           onClick={clearChecked} 
                           style={{ background: C.accent, color: C.white, border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 10, fontWeight: 700, cursor: "pointer" }}
                         >
-                          Clear Checked ({checked.length})
+                          Clear Checked ({(Array.isArray(checked) ? checked.length : 0)})
                         </button>
                       )}
                     </div>
@@ -2242,7 +2342,7 @@ export default function App() {
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                       <a
                         id="shop-instacart-btn"
-                        href={`https://www.instacart.com/store/s?k=${encodeURIComponent(cart.filter(item => !checked.includes(item)).join(", "))}`}
+                        href={`https://www.instacart.com/store/s?k=${encodeURIComponent(cart.filter(item => !(Array.isArray(checked) ? checked : []).includes(item)).join(", "))}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         style={{
@@ -2266,7 +2366,7 @@ export default function App() {
 
                       <a
                         id="shop-amazon-btn"
-                        href={`https://www.amazon.com/s?k=${encodeURIComponent(cart.filter(item => !checked.includes(item)).join(" "))}&i=amazonfresh`}
+                        href={`https://www.amazon.com/s?k=${encodeURIComponent(cart.filter(item => !(Array.isArray(checked) ? checked : []).includes(item)).join(" "))}&i=amazonfresh`}
                         target="_blank"
                         rel="noopener noreferrer"
                         style={{
@@ -2290,7 +2390,7 @@ export default function App() {
 
                       <a
                         id="shop-walmart-btn"
-                        href={`https://www.walmart.com/search?q=${encodeURIComponent(cart.filter(item => !checked.includes(item)).join(" "))}`}
+                        href={`https://www.walmart.com/search?q=${encodeURIComponent(cart.filter(item => !(Array.isArray(checked) ? checked : []).includes(item)).join(" "))}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         style={{
@@ -2322,10 +2422,11 @@ export default function App() {
                     <div style={{ fontSize: 11, lineHeight: 1.4 }}>Open any generated recipe detail card and add missing items to cart.</div>
                   </div>
                 ) : (() => {
+                  const safeCheckedList = Array.isArray(checked) ? checked : [];
                   const sortedCart = [...cart].sort((a, b) => {
                     if (cartSortBy === "checked") {
-                      const isAChecked = checked.includes(a);
-                      const isBChecked = checked.includes(b);
+                      const isAChecked = safeCheckedList.includes(a);
+                      const isBChecked = safeCheckedList.includes(b);
                       if (isAChecked && !isBChecked) return cartSortOrder === "asc" ? 1 : -1;
                       if (!isAChecked && isBChecked) return cartSortOrder === "asc" ? -1 : 1;
                     }
@@ -2335,43 +2436,45 @@ export default function App() {
 
                   return (
                     <div style={{ background: C.white, borderRadius: 16, border: `1px solid ${C.border}`, overflow: "hidden", boxShadow: "0 2px 10px rgba(0,0,0,0.02)" }}>
-                      {sortedCart.map((item, i) => (
-                        <div 
-                          key={item} 
-                          onClick={() => toggleCheck(item)} 
-                          style={{
-                            display: "flex", 
-                            alignItems: "center", 
-                            gap: 12, 
-                            padding: "10px 14px",
-                            borderBottom: i < sortedCart.length - 1 ? `1px solid ${C.border}` : "none",
-                            cursor: "pointer", 
-                            transition: "background 0.15s",
-                            background: checked.includes(item) ? "#FAF8F4" : C.white,
-                          }}
-                        >
+                      {sortedCart.map((item, i) => {
+                        const isCheckedItem = safeCheckedList.includes(item);
+                        return (
                           <div 
+                            key={item} 
+                            onClick={() => toggleCheck(item)} 
                             style={{
-                              width: 18, 
-                              height: 18, 
-                              borderRadius: 6, 
-                              border: `2px solid ${checked.includes(item) ? C.green : "#CBD5E1"}`,
-                              background: checked.includes(item) ? C.green : "none",
                               display: "flex", 
                               alignItems: "center", 
-                              justifyContent: "center", 
-                              flexShrink: 0, 
-                              transition: "all 0.15s",
+                              gap: 12, 
+                              padding: "10px 14px",
+                              borderBottom: i < sortedCart.length - 1 ? `1px solid ${C.border}` : "none",
+                              cursor: "pointer", 
+                              transition: "background 0.15s",
+                              background: isCheckedItem ? "#FAF8F4" : C.white,
                             }}
                           >
-                            {checked.includes(item) && (
-                              <span style={{ color: C.white, fontSize: 11, fontWeight: 900 }}>✓</span>
-                            )}
-                          </div>
-                          
-                          <span style={{ fontSize: 13, color: checked.includes(item) ? C.muted : C.text, textDecoration: checked.includes(item) ? "line-through" : "none", flex: 1, textTransform: "capitalize", fontWeight: 600 }}>
-                            {item}
-                          </span>
+                            <div 
+                              style={{
+                                width: 18, 
+                                height: 18, 
+                                borderRadius: 6, 
+                                border: `2px solid ${isCheckedItem ? C.green : "#CBD5E1"}`,
+                                background: isCheckedItem ? C.green : "none",
+                                display: "flex", 
+                                alignItems: "center", 
+                                justifyContent: "center", 
+                                flexShrink: 0, 
+                                transition: "all 0.15s",
+                              }}
+                            >
+                              {isCheckedItem && (
+                                <span style={{ color: C.white, fontSize: 11, fontWeight: 900 }}>✓</span>
+                              )}
+                            </div>
+                            
+                            <span style={{ fontSize: 13, color: isCheckedItem ? C.muted : C.text, textDecoration: isCheckedItem ? "line-through" : "none", flex: 1, textTransform: "capitalize", fontWeight: 600 }}>
+                              {item}
+                            </span>
 
                           {/* Quick Market Shortcuts */}
                           <div 
@@ -2428,7 +2531,8 @@ export default function App() {
                             </a>
                           </div>
                         </div>
-                      ))}
+                      );
+                    })}
                     </div>
                   );
                 })()}
@@ -3490,6 +3594,62 @@ function RecipeCard({
   const layoutDensity = localStorage.getItem("pantry_density") || "comfortable";
   const isCompact = layoutDensity === "compact";
   const activeFont = localStorage.getItem("pantry_font") || "sans";
+  const [copiedShare, setCopiedShare] = useState<boolean>(false);
+  const [currentImgUrl, setCurrentImgUrl] = useState<string | undefined>(r.imageUrl);
+  const [isGeneratingImg, setIsGeneratingImg] = useState<boolean>(false);
+
+  const handleGenerateImage = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isGeneratingImg) return;
+    setIsGeneratingImg(true);
+    try {
+      const res = await fetch("/api/generate-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recipeName: r.name,
+          prompt: `A gourmet plated dish of ${r.name}, ${r.desc}, high-end professional culinary food photography, 4k`
+        })
+      });
+      const data = await res.json();
+      if (data?.imageUrl) {
+        setCurrentImgUrl(data.imageUrl);
+        r.imageUrl = data.imageUrl;
+      }
+    } catch (err) {
+      console.info("Info: Falling back to high-res gourmet image for recipe card.");
+      const cleanPrompt = encodeURIComponent(`plated gourmet food ${r.name}`);
+      const fallbackUrl = `https://image.pollinations.ai/prompt/${cleanPrompt}?width=800&height=600&nologo=true&seed=${Math.floor(Math.random() * 900000)}`;
+      setCurrentImgUrl(fallbackUrl);
+      r.imageUrl = fallbackUrl;
+    } finally {
+      setIsGeneratingImg(false);
+    }
+  };
+
+  const handleShare = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const origin = window.location.origin + window.location.pathname;
+      const deepLink = `${origin}?recipe=${encodeURIComponent(r.name)}`;
+      const shareTitle = `${r.emoji || "🍽️"} ${r.name}`;
+      const shareText = `🍳 Check out this recipe: ${r.name}!\n"${r.desc}"\n⏱️ ${r.time}m | 🧠 ${r.cuisine}\n\nLink: ${deepLink}`;
+
+      if (navigator.share) {
+        navigator.share({
+          title: shareTitle,
+          text: shareText,
+          url: deepLink
+        }).catch(() => {});
+      } else {
+        navigator.clipboard.writeText(shareText);
+        setCopiedShare(true);
+        setTimeout(() => setCopiedShare(false), 2000);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   return (
     <motion.div 
@@ -3516,9 +3676,26 @@ function RecipeCard({
         gap: isCompact ? 10 : 12,
       }}
     >
-      <div style={{ fontSize: isCompact ? 24 : 30, background: "#FDFBF7", padding: isCompact ? "4px" : "8px", borderRadius: 12, border: "1px solid #FAF4EB", display: "flex", alignItems: "center", justifyContent: "center", width: isCompact ? 40 : 48, height: isCompact ? 40 : 48, flexShrink: 0 }}>
-        {r.emoji}
-      </div>
+      {currentImgUrl ? (
+        <img
+          src={currentImgUrl}
+          alt={r.name}
+          style={{
+            width: isCompact ? 44 : 52,
+            height: isCompact ? 44 : 52,
+            borderRadius: 12,
+            objectFit: "cover",
+            flexShrink: 0,
+            border: "1px solid #FAF4EB",
+            boxShadow: "0 2px 6px rgba(0,0,0,0.08)"
+          }}
+          referrerPolicy="no-referrer"
+        />
+      ) : (
+        <div style={{ fontSize: isCompact ? 24 : 30, background: "#FDFBF7", padding: isCompact ? "4px" : "8px", borderRadius: 12, border: "1px solid #FAF4EB", display: "flex", alignItems: "center", justifyContent: "center", width: isCompact ? 40 : 48, height: isCompact ? 40 : 48, flexShrink: 0 }}>
+          {r.emoji}
+        </div>
+      )}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, fontWeight: 900, color: C.text, marginBottom: 2 }} className="truncate">
           {r.name}
@@ -3566,7 +3743,7 @@ function RecipeCard({
           ))}
         </div>
         
-        {/* have vs missing checklist status & YouTube */}
+        {/* have vs missing checklist status & Actions */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginTop: 4 }}>
           <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
             <span style={{ fontSize: 10, fontWeight: 700, color: C.green, background: C.lightGreen, padding: "1px 6px", borderRadius: 8 }}>✓ {r.used?.length || 0} have</span>
@@ -3576,6 +3753,63 @@ function RecipeCard({
           </div>
           
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <button
+              onClick={handleGenerateImage}
+              disabled={isGeneratingImg}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                fontSize: 10,
+                fontWeight: 800,
+                color: "#FFFFFF",
+                background: isGeneratingImg ? "#94A3B8" : "linear-gradient(135deg, #F97316 0%, #D95F2B 100%)",
+                padding: "4px 8px",
+                borderRadius: 10,
+                border: "none",
+                boxShadow: "0 2px 6px rgba(217, 95, 43, 0.25)",
+                cursor: isGeneratingImg ? "wait" : "pointer",
+                transition: "all 0.1s"
+              }}
+              className="hover:scale-105 active:scale-95"
+              title="Generate AI realistic meal visualization image"
+            >
+              <Wand2 className={`w-3 h-3 text-amber-100 ${isGeneratingImg ? "animate-spin" : ""}`} />
+              <span>{isGeneratingImg ? "Generating..." : "Generate Image"}</span>
+            </button>
+
+            <button
+              onClick={handleShare}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                fontSize: 10,
+                fontWeight: 800,
+                color: copiedShare ? "#D97706" : C.text,
+                background: copiedShare ? "#FEF3C7" : "#FAF6F0",
+                padding: "4px 8px",
+                borderRadius: 10,
+                border: `1px solid ${copiedShare ? "#FCD34D" : "#F0E8DD"}`,
+                cursor: "pointer",
+                transition: "all 0.1s"
+              }}
+              className="hover:scale-105 active:scale-95"
+              title="Share deep-link with friends"
+            >
+              {copiedShare ? (
+                <>
+                  <Check className="w-3 h-3 text-amber-600" />
+                  <span>Copied!</span>
+                </>
+              ) : (
+                <>
+                  <Share2 className="w-3 h-3 text-slate-600" />
+                  <span>Share</span>
+                </>
+              )}
+            </button>
+
             {onStartCooking && (
               <button
                 onClick={(e) => {
@@ -3626,33 +3860,67 @@ function RecipeCard({
               }}
               className="hover:scale-105 active:scale-95 hover:bg-[#CC0000]"
             >
-              <span>▶</span> Watch Guide
+              <span>▶</span> Watch
             </a>
           </div>
         </div>
       </div>
       
-      {/* Heart quick-action */}
-      <button 
-        onClick={(e) => {
-          e.stopPropagation();
-          toggleSave();
-        }}
+      {/* Quick Action Top Right Controls (Share + Save) */}
+      <div 
         style={{
-          background: "none",
-          border: "none",
-          fontSize: 16,
-          cursor: "pointer",
-          padding: 6,
-          color: isSaved ? C.accent : C.muted,
           position: "absolute",
           top: 8,
           right: 8,
+          display: "flex",
+          alignItems: "center",
+          gap: 2
         }}
-        className="active:scale-95"
       >
-        {isSaved ? "❤️" : "🤍"}
-      </button>
+        <button
+          onClick={handleShare}
+          title="Share deep-link text"
+          style={{
+            background: copiedShare ? "#FEF3C7" : "none",
+            border: copiedShare ? "1px solid #FCD34D" : "none",
+            borderRadius: 8,
+            padding: "4px",
+            fontSize: 12,
+            cursor: "pointer",
+            color: copiedShare ? "#D97706" : C.muted,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            transition: "all 0.15s"
+          }}
+          className="hover:text-amber-700 active:scale-95"
+        >
+          {copiedShare ? (
+            <Check className="w-3.5 h-3.5 text-amber-600" />
+          ) : (
+            <Share2 className="w-3.5 h-3.5" />
+          )}
+        </button>
+
+        <button 
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleSave();
+          }}
+          style={{
+            background: "none",
+            border: "none",
+            fontSize: 16,
+            cursor: "pointer",
+            padding: "4px",
+            color: isSaved ? C.accent : C.muted,
+          }}
+          className="active:scale-95"
+          title={isSaved ? "Remove from saved" : "Save recipe"}
+        >
+          {isSaved ? "❤️" : "🤍"}
+        </button>
+      </div>
     </motion.div>
   );
 }

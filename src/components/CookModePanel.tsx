@@ -112,8 +112,8 @@ export default function CookModePanel({
             // Timer finished!
             setTimerRunning(false);
             if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-            // Trigger alarm sound
-            alarmSoundEngine.play();
+            // Trigger alarm sound (rings for 10 seconds)
+            alarmSoundEngine.play(10000);
             return 0;
           }
           return prev !== null ? prev - 1 : null;
@@ -207,7 +207,7 @@ export default function CookModePanel({
       setCurrentStepIdx((prev) => prev + 1);
     } else {
       // Completed last step!
-      alarmSoundEngine.play();
+      alarmSoundEngine.play(10000);
       if (onComplete) {
         onComplete();
       }

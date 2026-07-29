@@ -19,7 +19,8 @@ import {
   DollarSign,
   Star,
   ExternalLink,
-  UtensilsCrossed
+  UtensilsCrossed,
+  Wand2
 } from "lucide-react";
 import { AIRecipe } from "../types";
 import { t } from "../data/languages";
@@ -150,9 +151,39 @@ export default function RecipeDetailModal({
   const [hoveredRating, setHoveredRating] = useState<number | null>(null);
   const [exportingTasks, setExportingTasks] = useState(false);
   const [exportedSuccess, setExportedSuccess] = useState(false);
+  const [activeImageUrl, setActiveImageUrl] = useState<string>(getRecipeImage(recipe));
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
 
   const tr = (key: string, fallback?: string): string => {
     return t(key, currentLanguage, fallback);
+  };
+
+  const handleGenerateImage = async () => {
+    if (isGeneratingImage) return;
+    setIsGeneratingImage(true);
+    try {
+      const res = await fetch("/api/generate-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recipeName: recipe.name,
+          prompt: `A gourmet plated dish of ${recipe.name}, ${recipe.desc}, high-end professional culinary food photography, 4k`
+        })
+      });
+      const data = await res.json();
+      if (data?.imageUrl) {
+        setActiveImageUrl(data.imageUrl);
+        recipe.imageUrl = data.imageUrl;
+      }
+    } catch (err) {
+      console.info("Info: Falling back to high-res gourmet image for recipe card.");
+      const cleanPrompt = encodeURIComponent(`plated gourmet food ${recipe.name}`);
+      const fallbackUrl = `https://image.pollinations.ai/prompt/${cleanPrompt}?width=800&height=600&nologo=true&seed=${Math.floor(Math.random() * 900000)}`;
+      setActiveImageUrl(fallbackUrl);
+      recipe.imageUrl = fallbackUrl;
+    } finally {
+      setIsGeneratingImage(false);
+    }
   };
 
   const handleExportToTasks = async () => {
@@ -181,10 +212,22 @@ export default function RecipeDetailModal({
 
   const handleShare = () => {
     try {
-      const shareText = `Cooking ${recipe.emoji} ${recipe.name}! Check out this amazing recipe: ${recipe.desc}`;
-      navigator.clipboard.writeText(shareText);
-      setCopiedLink(true);
-      setTimeout(() => setCopiedLink(false), 2000);
+      const origin = window.location.origin + window.location.pathname;
+      const deepLink = `${origin}?recipe=${encodeURIComponent(recipe.name)}`;
+      const shareTitle = `${recipe.emoji || "🍽️"} ${recipe.name}`;
+      const shareText = `🍳 Check out this recipe: ${recipe.name}!\n"${recipe.desc}"\n⏱️ ${recipe.time}m | 🧠 ${recipe.cuisine}\n\nLink: ${deepLink}`;
+
+      if (navigator.share) {
+        navigator.share({
+          title: shareTitle,
+          text: shareText,
+          url: deepLink
+        }).catch(() => {});
+      } else {
+        navigator.clipboard.writeText(shareText);
+        setCopiedLink(true);
+        setTimeout(() => setCopiedLink(false), 2000);
+      }
     } catch (e) {
       console.error(e);
     }
@@ -199,22 +242,22 @@ export default function RecipeDetailModal({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs"
+      className="fixed inset-0 z-50 flex flex-col bg-[#FAF8F4] w-full h-full min-h-screen p-0 m-0 overflow-hidden"
     >
       {/* Backdrop Closers */}
       <div className="absolute inset-0" onClick={onClose} />
 
       <motion.div
-        initial={{ opacity: 0, scale: 0.96, y: 40 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.96, y: 30 }}
-        transition={{ type: "spring", stiffness: 280, damping: 24 }}
-        className="relative w-full max-w-2xl bg-[#FAF8F4] text-slate-800 rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col z-10 border border-amber-100"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: 20 }}
+        transition={{ type: "spring", stiffness: 300, damping: 26 }}
+        className="relative w-full h-full max-w-full max-h-full bg-[#FAF8F4] text-slate-800 rounded-none shadow-none overflow-hidden flex flex-col z-10 border-none"
       >
         {/* Playfair & Forest Color Themed Visual Banner with Header Image */}
         <div className="relative h-64 sm:h-72 bg-[#1E3D2F] shrink-0 overflow-hidden border-b border-amber-900/10">
           <img
-            src={getRecipeImage(recipe)}
+            src={activeImageUrl}
             alt={recipe.name}
             className="w-full h-full object-cover opacity-85 transition-opacity duration-300"
             referrerPolicy="no-referrer"
@@ -224,6 +267,17 @@ export default function RecipeDetailModal({
 
           {/* Action Header Button Controls */}
           <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
+            <button
+              id="generate-ai-image-btn"
+              onClick={handleGenerateImage}
+              disabled={isGeneratingImage}
+              className="px-3 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white backdrop-blur-md transition-all border border-white/20 active:scale-95 flex items-center gap-1.5 text-xs font-bold shadow-md cursor-pointer disabled:opacity-75"
+              title="Generate AI realistic meal visualization image"
+            >
+              <Wand2 className={`w-3.5 h-3.5 ${isGeneratingImage ? "animate-spin" : ""}`} />
+              <span className="hidden sm:inline">{isGeneratingImage ? tr("generating", "Generating...") : tr("generateImage", "Generate Image")}</span>
+              <span className="sm:hidden">{isGeneratingImage ? "..." : "AI Image"}</span>
+            </button>
             <button
               id="share-recipe-btn"
               onClick={handleShare}

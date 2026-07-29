@@ -3,8 +3,10 @@
   "appId": "1:942888483824:web:c0bb17b12dc72790a1fb35",
   "apiKey": "AIzaSyCyFB3qpBLq0UghE2FJvydRwDqtYZhbrbQ",
   "authDomain": "confident-future-2lrqd.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-whatsinmyfridge-db134381-2962-45ab-90f5-fb3a1322b43a",
   "storageBucket": "confident-future-2lrqd.firebasestorage.app",
   "messagingSenderId": "942888483824",
   "measurementId": "",
-  "oAuthClientId": "942888483824-lradoq0snogu42cmrc16m2evqdmrj1g4.apps.googleusercontent.com"
+  "oAuthClientId": "942888483824-lradoq0snogu42cmrc16m2evqdmrj1g4.apps.googleusercontent.com",
+  "recaptchaSiteKey": ""
 }

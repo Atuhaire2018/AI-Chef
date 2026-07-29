@@ -18,6 +18,8 @@ class AlarmSoundEngine {
     return this.audioCtx;
   }
 
+  private autoStopTimeout: any = null;
+
   public setRingtone(name: string) {
     this.currentRingtone = name;
   }
@@ -26,7 +28,7 @@ class AlarmSoundEngine {
     return this.currentRingtone;
   }
 
-  public play() {
+  public play(durationMs: number = 5000) {
     this.stop(); // Safe guard
     const ctx = this.getAudioContext();
     const ringtone = this.currentRingtone;
@@ -40,9 +42,19 @@ class AlarmSoundEngine {
     } else if (ringtone === "zen") {
       this.playZen(ctx);
     }
+
+    if (durationMs > 0) {
+      this.autoStopTimeout = setTimeout(() => {
+        this.stop();
+      }, durationMs);
+    }
   }
 
   public stop() {
+    if (this.autoStopTimeout) {
+      clearTimeout(this.autoStopTimeout);
+      this.autoStopTimeout = null;
+    }
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;

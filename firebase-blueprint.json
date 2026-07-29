@@ -1,0 +1,59 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "User profile data and preferences",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 256 },
+        "displayName": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "createdAt"]
+    },
+    "SavedRecipe": {
+      "title": "Saved Recipe",
+      "description": "Recipe saved by the user",
+      "type": "object",
+      "properties": {
+        "recipeId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 256 },
+        "cuisine": { "type": "string", "maxLength": 128 },
+        "time": { "type": "integer" },
+        "desc": { "type": "string", "maxLength": 1000 },
+        "savedAt": { "type": "string", "format": "date-time" },
+        "userId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["recipeId", "name", "userId"]
+    },
+    "CartItem": {
+      "title": "Cart Item",
+      "description": "Shopping list item",
+      "type": "object",
+      "properties": {
+        "itemId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 256 },
+        "checked": { "type": "boolean" },
+        "addedAt": { "type": "string", "format": "date-time" },
+        "userId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["name", "userId"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User document storing basic user details"
+    },
+    "/users/{userId}/savedRecipes/{recipeId}": {
+      "schema": "SavedRecipe",
+      "description": "Collection of recipes saved by the user"
+    },
+    "/users/{userId}/cartItems/{itemId}": {
+      "schema": "CartItem",
+      "description": "Shopping cart items saved by the user"
+    }
+  }
+}
