@@ -16,6 +16,8 @@ import SeasonalChefsTip from "./components/SeasonalChefsTip";
 import RecipeDifficultyBadge from "./components/RecipeDifficultyBadge";
 import ClaudeOpusSupervisor from "./components/ClaudeOpusSupervisor";
 import AppSplashScreen from "./components/AppSplashScreen";
+import { GeminiChefChat } from "./components/GeminiChefChat";
+import { GroceryOrderModal } from "./components/GroceryOrderModal";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -210,7 +212,7 @@ export default function App() {
   const [sqlUserId, setSqlUserId] = useState<number | null>(null);
   const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(() => {
     const val = sessionStorage.getItem("pantry_google_access_token");
-    if (!val || val === "null" || val === "undefined") return null;
+    if (!val || typeof val !== "string" || val === "null" || val === "undefined" || val.trim().length < 10) return null;
     return val;
   });
   const [syncing, setSyncing] = useState<boolean>(false);
@@ -237,6 +239,9 @@ export default function App() {
   const [filterOpen, setFilterOpen] = useState<boolean>(false);
   const [supervisorOpen, setSupervisorOpen] = useState<boolean>(false);
   const [selectedRecipe, setSelectedRecipe] = useState<AIRecipe | null>(null);
+  const [chefChatOpen, setChefChatOpen] = useState<boolean>(false);
+  const [chefChatInitialQuery, setChefChatInitialQuery] = useState<string>("");
+  const [orderModalOpen, setOrderModalOpen] = useState<boolean>(false);
 
   // Autonomous Continuous Background AI Problem Scanner & Self-Healing Engine
   useEffect(() => {
@@ -502,7 +507,7 @@ export default function App() {
   };
 
   const loadGoogleTaskLists = async (accessToken: string) => {
-    if (!accessToken || accessToken === "null" || accessToken === "undefined") return;
+    if (!accessToken || typeof accessToken !== "string" || accessToken === "null" || accessToken === "undefined" || accessToken.trim().length < 10) return;
     try {
       const idToken = await auth.currentUser?.getIdToken();
       if (!idToken) return;
@@ -519,14 +524,16 @@ export default function App() {
           setSelectedTaskListId(data.items[0].id);
         }
       } else {
-        console.error("Google lists fetch failed:", await res.text());
-        if (res.status === 401) {
+        if (res.status === 401 || res.status === 400) {
           setGoogleAccessToken(null);
           sessionStorage.removeItem("pantry_google_access_token");
+          console.info("Google Tasks token inactive or expired. Re-authentication available in shopping list.");
+        } else {
+          console.warn("Google lists fetch warning:", await res.text());
         }
       }
     } catch (e) {
-      console.error("Failed to load Google Task Lists", e);
+      console.warn("Notice: Google Task Lists could not be loaded", e);
     }
   };
   
@@ -589,7 +596,7 @@ export default function App() {
         await syncWithCloudSQL(currentUser, idToken);
         await syncWithFirestore(currentUser);
         
-        if (googleAccessToken && googleAccessToken !== "null" && googleAccessToken !== "undefined") {
+        if (googleAccessToken && typeof googleAccessToken === "string" && googleAccessToken.trim().length > 10 && googleAccessToken !== "null" && googleAccessToken !== "undefined") {
           loadGoogleTaskLists(googleAccessToken);
         }
       } else {
@@ -606,15 +613,17 @@ export default function App() {
       const result = await signInWithPopup(auth, googleAuthProvider);
       const credential = GoogleAuthProvider.credentialFromResult(result);
       const accessToken = credential?.accessToken;
-      if (accessToken) {
+      if (accessToken && typeof accessToken === "string" && accessToken.trim().length > 10) {
         setGoogleAccessToken(accessToken);
         sessionStorage.setItem("pantry_google_access_token", accessToken);
         await loadGoogleTaskLists(accessToken);
         return true;
       }
       return false;
-    } catch (error) {
-      console.error("Google Tasks Authorization failed:", error);
+    } catch (error: any) {
+      if (error?.code !== "auth/popup-closed-by-user") {
+        console.warn("Google Tasks Authorization notice:", error?.message || error);
+      }
       return false;
     } finally {
       setSyncing(false);
@@ -627,7 +636,7 @@ export default function App() {
       const result = await signInWithPopup(auth, googleAuthProvider);
       const credential = GoogleAuthProvider.credentialFromResult(result);
       const accessToken = credential?.accessToken;
-      if (accessToken) {
+      if (accessToken && typeof accessToken === "string" && accessToken.trim().length > 10) {
         setGoogleAccessToken(accessToken);
         sessionStorage.setItem("pantry_google_access_token", accessToken);
         loadGoogleTaskLists(accessToken);
@@ -825,7 +834,8 @@ export default function App() {
       });
 
       if (!response.ok) {
-        throw new Error("Invalid scanner status.");
+        const errDetail = await response.json().catch(() => null);
+        throw new Error(errDetail?.error || "Invalid scanner status.");
       }
 
       const detectedList: string[] = await response.json();
@@ -1307,6 +1317,32 @@ export default function App() {
                   className={isAlarmRinging ? "animate-pulse" : ""}
                 >
                   ⏱️ {isAlarmRinging ? "Ringing!" : (timerSeconds > 0 ? `${Math.floor(timerSeconds / 60)}:${String(timerSeconds % 60).padStart(2, "0")}` : "Timer")}
+                </button>
+
+                {/* Gemini Sous-Chef AI Chatbot Trigger */}
+                <button
+                  id="header-gemini-chat-btn"
+                  onClick={() => setChefChatOpen(true)}
+                  title="Ask Gemini Sous-Chef with Google Search Grounding"
+                  style={{
+                    background: "linear-gradient(135deg, #F59E0B, #EA580C)",
+                    border: "1px solid rgba(255,255,255,0.4)",
+                    borderRadius: 20,
+                    padding: "5px 12px",
+                    color: C.white,
+                    fontSize: 11,
+                    fontWeight: 800,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 5,
+                    cursor: "pointer",
+                    boxShadow: "0 2px 8px rgba(245, 158, 11, 0.35)",
+                    transition: "all 0.2s"
+                  }}
+                  className="hover:scale-105 active:scale-95"
+                >
+                  <Bot className="w-3.5 h-3.5" />
+                  <span>Ask Chef</span>
                 </button>
 
                 {/* Settings Configuration Badge Button */}
@@ -2178,6 +2214,80 @@ export default function App() {
 
                 {cart.length > 0 && (
                   <div style={{
+                    background: "linear-gradient(135deg, #F0FDF4 0%, #DCFCE7 100%)",
+                    border: "1px solid #86EFAC",
+                    borderRadius: 16,
+                    padding: 16,
+                    marginBottom: 16,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 12,
+                    boxShadow: "0 2px 8px rgba(34, 197, 94, 0.08)"
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <div style={{ width: 42, height: 42, borderRadius: 12, background: "#BBF7D0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, boxShadow: "0 2px 4px rgba(0,0,0,0.05)" }}>
+                          🥑
+                        </div>
+                        <div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <h4 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: "#14532D" }}>Direct Grocery Delivery</h4>
+                            <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 6, background: "#16A34A", color: "#FFFFFF" }}>FAST</span>
+                          </div>
+                          <p style={{ margin: "2px 0 0", fontSize: 11, color: "#166534" }}>
+                            Have all {cart.length} ingredients shopped from Whole Foods, Trader Joe's, or local markets in ~40 mins.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <button
+                          id="place-grocery-order-btn"
+                          onClick={() => setOrderModalOpen(true)}
+                          style={{
+                            background: "#16A34A",
+                            color: "#FFFFFF",
+                            border: "none",
+                            borderRadius: 10,
+                            padding: "9px 16px",
+                            fontSize: 12,
+                            fontWeight: 800,
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                            boxShadow: "0 2px 8px rgba(22, 163, 74, 0.3)",
+                            transition: "all 0.15s"
+                          }}
+                          className="hover:scale-105 active:scale-95 hover:bg-emerald-700"
+                        >
+                          🛍️ Make Grocery Order
+                        </button>
+                        <button
+                          id="view-grocery-orders-btn"
+                          onClick={() => setOrderModalOpen(true)}
+                          style={{
+                            background: "#FFFFFF",
+                            color: "#166534",
+                            border: "1px solid #86EFAC",
+                            borderRadius: 10,
+                            padding: "9px 12px",
+                            fontSize: 11,
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            transition: "all 0.15s"
+                          }}
+                          className="hover:bg-emerald-50"
+                        >
+                          📦 Past Orders
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {cart.length > 0 && (
+                  <div style={{
                     background: "#F0F6FF",
                     border: "1px dashed #BFDBFE",
                     borderRadius: 16,
@@ -2419,7 +2529,27 @@ export default function App() {
                   <div style={{ textAlign: "center", padding: "48px 20px", color: C.muted }}>
                     <div style={{ fontSize: 44, marginBottom: 12 }}>🛒</div>
                     <div style={{ fontSize: 14, fontFamily: "'Playfair Display', serif", fontWeight: 700, color: C.text, marginBottom: 4 }}>Cart list is empty</div>
-                    <div style={{ fontSize: 11, lineHeight: 1.4 }}>Open any generated recipe detail card and add missing items to cart.</div>
+                    <div style={{ fontSize: 11, lineHeight: 1.4, marginBottom: 16 }}>Open any generated recipe detail card and add missing items to cart.</div>
+                    <button
+                      id="view-orders-empty-cart-btn"
+                      onClick={() => setOrderModalOpen(true)}
+                      style={{
+                        background: "#F0FDF4",
+                        color: "#166534",
+                        border: "1px solid #86EFAC",
+                        borderRadius: 10,
+                        padding: "8px 16px",
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6
+                      }}
+                      className="hover:bg-emerald-100"
+                    >
+                      📦 View Past Grocery Orders
+                    </button>
                   </div>
                 ) : (() => {
                   const safeCheckedList = Array.isArray(checked) ? checked : [];
@@ -3568,6 +3698,41 @@ export default function App() {
           />
         )}
       </AnimatePresence>
+
+      {/* GROCERY DELIVERY ORDER MODAL (Enforces sign-in on ordering only) */}
+      <GroceryOrderModal
+        isOpen={orderModalOpen}
+        onClose={() => setOrderModalOpen(false)}
+        user={user}
+        onSignIn={handleSignIn}
+        cartItems={cart}
+        onOrderCompleted={() => setCart([])}
+        themeColors={C}
+      />
+
+      {/* GEMINI MULTI-TURN CHEF CHATBOT DRAWER WITH GOOGLE SEARCH GROUNDING */}
+      <GeminiChefChat
+        isOpen={chefChatOpen}
+        onClose={() => setChefChatOpen(false)}
+        themeColors={C}
+        initialQuery={chefChatInitialQuery}
+        currentPantryItems={ings}
+      />
+
+      {/* FLOATING QUICK LAUNCHER FOR GEMINI CHEF CHAT */}
+      <button
+        id="floating-gemini-chef-chat-btn"
+        onClick={() => setChefChatOpen(true)}
+        title="Chat with Gemini Sous-Chef"
+        style={{
+          background: "linear-gradient(135deg, #F59E0B, #EA580C)",
+          boxShadow: "0 4px 16px rgba(234, 88, 12, 0.4)"
+        }}
+        className="fixed bottom-5 right-5 z-40 px-4 py-3 rounded-full text-white font-bold text-xs flex items-center gap-2 hover:scale-105 active:scale-95 transition-all cursor-pointer border border-white/20"
+      >
+        <Bot className="w-4 h-4" />
+        <span className="hidden sm:inline">Ask Gemini Chef</span>
+      </button>
     </div>
   );
 }

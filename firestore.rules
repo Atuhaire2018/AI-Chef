@@ -66,6 +66,17 @@ service cloud.firestore {
           incoming().name is string && incoming().name.size() <= 256;
         allow delete: if isOwner(userId);
       }
+
+      // User Grocery Orders Subcollection
+      match /orders/{orderId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) &&
+          incoming().userId == userId &&
+          incoming().orderId is string && incoming().orderId.size() <= 128;
+        allow update: if isOwner(userId) &&
+          incoming().userId == userId;
+        allow delete: if isOwner(userId);
+      }
     }
   }
 }

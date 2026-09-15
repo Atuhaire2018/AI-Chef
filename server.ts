@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import { requireAuth, AuthRequest } from "./src/middleware/auth.ts";
+import { rateLimit } from "./src/middleware/rateLimit.ts";
 import {
   getOrCreateUser,
   getUserData,
@@ -24,9 +25,31 @@ const recipeCache = new Map<string, any>();
 const app = express();
 const PORT = 3000;
 
+// Cloud Run terminates TLS in front of the app. Without this every request
+// appears to come from the proxy, which collapses all callers into one
+// rate-limit bucket. One hop is trusted, not the whole X-Forwarded-For chain,
+// so the client address cannot be spoofed by a header.
+app.set("trust proxy", 1);
+
 // Set maximum payload sizes to accommodate image base64 data
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ limit: "20mb", extended: true }));
+
+// Per-IP limits for the endpoints that spend Gemini quota. The app is usable
+// without signing in, so a user allow-list is not an option here — the ceiling
+// has to come from request rate instead.
+const recipeLimiter = rateLimit({ name: "recipes", max: 30 });
+const scanLimiter = rateLimit({ name: "scan", max: 10 });
+const imageLimiter = rateLimit({ name: "generate-image", max: 5 });
+const tipsLimiter = rateLimit({ name: "seasonal-tips", max: 20 });
+const chatLimiter = rateLimit({ name: "chat", max: 40 });
+
+// Largest base64 image accepted by /api/scan (~10 MB of source bytes, still
+// inside the 20mb body limit).
+const MAX_IMAGE_CHARS = 14_000_000;
+// Guards against a single request fanning out into an enormous prompt.
+const MAX_INGREDIENTS = 50;
+const MAX_INGREDIENT_CHARS = 100;
 
 let aiClient: GoogleGenAI | null = null;
 
@@ -49,12 +72,16 @@ function getAIClient(): GoogleGenAI {
 }
 
 async function generateContentWithRetry(ai: GoogleGenAI, options: any): Promise<any> {
-  const modelsToTry = ["gemini-3.6-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
+  const preferredModel = options.model;
+  const baseModels = ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-flash-latest", "gemini-3.1-flash-lite", "gemini-3.6-flash"];
+  const modelsToTry = preferredModel 
+    ? [preferredModel, ...baseModels.filter(m => m !== preferredModel)]
+    : baseModels;
   let lastError: any = null;
   for (let i = 0; i < modelsToTry.length; i++) {
     const model = modelsToTry[i];
     try {
-      console.log(`[Gemini API] Querying model: ${model}`);
+      console.info(`[Gemini API] Querying model: ${model}`);
       const response = await ai.models.generateContent({
         ...options,
         model: model
@@ -64,16 +91,17 @@ async function generateContentWithRetry(ai: GoogleGenAI, options: any): Promise<
       const msg = err.message || String(err);
       lastError = err;
       
-      // If quota exhausted or rate limited (429 / RESOURCE_EXHAUSTED), handle quietly
+      // If quota exhausted, rate limited, or 503 high demand spike, transition to next model cleanly
       if (msg.includes("429") || msg.includes("RESOURCE_EXHAUSTED") || msg.includes("quota")) {
-        console.log(`[Gemini API] Quota limit reached on ${model}. Transitioning to offline fallback mode.`);
-        break;
+        console.info(`[Gemini API] Notice: Quota limit on ${model}. Trying next available model.`);
+      } else if (msg.includes("503") || msg.includes("high demand") || msg.includes("UNAVAILABLE")) {
+        console.info(`[Gemini API] Notice: ${model} experiencing high demand (503). Trying next available model.`);
       } else {
-        console.log(`[Gemini API] Model ${model} unavailable: ${msg.substring(0, 100)}`);
+        console.info(`[Gemini API] Notice: ${model} unavailable (${msg.substring(0, 80)}). Trying next available model.`);
       }
 
       if (i < modelsToTry.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 800));
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
   }
@@ -371,9 +399,10 @@ app.post("/api/clear-cooking-history", requireAuth, async (req: AuthRequest, res
 // Google Tasks Endpoints proxying requests securely
 app.get("/api/tasks/lists", requireAuth, async (req: AuthRequest, res) => {
   try {
-    const googleToken = req.headers["x-google-token"];
-    if (!googleToken || googleToken === "null" || googleToken === "undefined") {
-      res.status(400).json({ error: "Missing Google OAuth Access Token in request headers." });
+    const rawToken = req.headers["x-google-token"];
+    const googleToken = Array.isArray(rawToken) ? rawToken[0] : rawToken;
+    if (!googleToken || typeof googleToken !== "string" || googleToken.trim().length === 0 || googleToken === "null" || googleToken === "undefined") {
+      res.status(401).json({ error: "Missing Google OAuth Access Token in request headers." });
       return;
     }
 
@@ -396,9 +425,10 @@ app.get("/api/tasks/lists", requireAuth, async (req: AuthRequest, res) => {
 
 app.post("/api/tasks/add", requireAuth, async (req: AuthRequest, res) => {
   try {
-    const googleToken = req.headers["x-google-token"];
+    const rawToken = req.headers["x-google-token"];
+    const googleToken = Array.isArray(rawToken) ? rawToken[0] : rawToken;
     const { listId, title, notes } = req.body;
-    if (!googleToken || googleToken === "null" || googleToken === "undefined" || !listId || !title) {
+    if (!googleToken || typeof googleToken !== "string" || googleToken.trim().length === 0 || googleToken === "null" || googleToken === "undefined" || !listId || !title) {
       res.status(400).json({ error: "Missing required parameters or credentials." });
       return;
     }
@@ -429,12 +459,141 @@ app.post("/api/tasks/add", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
+// Multi-turn Gemini Chatbot with specific culinary roles and Search Grounding
+app.post("/api/chat", chatLimiter, async (req, res) => {
+  try {
+    const { messages, role = "sous-chef", modelPreference = "gemini-3.5-flash", useSearch = false } = req.body;
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      res.status(400).json({ error: "Missing or invalid messages parameter." });
+      return;
+    }
 
-app.post("/api/recipes", async (req, res) => {
+    // Determine model to prioritize based on user preference and prompt specifications
+    // gemini-3.1-pro-preview for complex tasks, gemini-3.5-flash for general tasks & search, gemini-3.1-flash-lite for fast tasks
+    let selectedModel = "gemini-3.5-flash";
+    if (useSearch) {
+      selectedModel = "gemini-3.5-flash";
+    } else if (modelPreference === "gemini-3.1-pro-preview") {
+      selectedModel = "gemini-3.1-pro-preview";
+    } else if (modelPreference === "gemini-3.1-flash-lite") {
+      selectedModel = "gemini-3.1-flash-lite";
+    } else {
+      selectedModel = "gemini-3.5-flash";
+    }
+
+    // Role-specific system instructions
+    let systemInstruction = "You are AI Chef's Executive Sous-Chef, an encouraging and culinary expert mentor. Answer cooking questions, suggest substitutions, explain cooking techniques, temperature guides, and advise how to make the most of pantry ingredients. Keep answers practical, structured with bullet points where helpful, and appetizing.";
+    if (role === "culinary-chemist") {
+      systemInstruction = "You are a Food Scientist and Molecular Culinary Chemist. Explain the Maillard reaction, emulsification, enzyme breakdown, acid-base balances, starch gelatinization, and kitchen physics to help the home cook master the science behind great food.";
+    } else if (role === "pantry-saver") {
+      systemInstruction = "You are a Zero-Waste Pantry Specialist and Preservation Expert. Provide ingenious tips for using vegetable scraps, preserving fresh herbs, creative broths, shelf-life maximization, and reducing food waste.";
+    } else if (role === "speed-assistant") {
+      systemInstruction = "You are a Lightning-Fast Kitchen Assistant. Provide concise, direct, one-to-two sentence kitchen answers, quick conversion tables, immediate oven temperature lookups, and fast timers.";
+    }
+
+    // Format conversation history for Gemini API
+    const contents = messages.map((m: any) => ({
+      role: m.role === "assistant" || m.role === "model" ? "model" : "user",
+      parts: [{ text: typeof m.content === "string" ? m.content : (m.text || "") }]
+    }));
+
+    const key = process.env.GEMINI_API_KEY;
+    const isValidKey = key && key !== "MY_GEMINI_API_KEY" && key !== "undefined" && key !== "null" && key.trim().length > 0;
+
+    if (isValidKey) {
+      const ai = getAIClient();
+      const config: any = {
+        systemInstruction,
+      };
+
+      if (useSearch) {
+        config.tools = [{ googleSearch: {} }];
+      }
+
+      const modelsToTry = [selectedModel];
+      if (selectedModel !== "gemini-3.5-flash") modelsToTry.push("gemini-3.5-flash");
+      if (selectedModel !== "gemini-3.8-flash") modelsToTry.push("gemini-3.8-flash");
+      if (selectedModel !== "gemini-3.1-flash-lite") modelsToTry.push("gemini-3.1-flash-lite");
+
+      let response: any = null;
+
+      for (const m of modelsToTry) {
+        try {
+          response = await ai.models.generateContent({
+            model: m,
+            contents,
+            config
+          });
+          if (response && response.text) {
+            break;
+          }
+        } catch (err: any) {
+          console.info(`[Gemini Chat] Model ${m} notice: ${err?.message?.substring(0, 60) || "unavailable"}`);
+        }
+      }
+
+      if (response && response.text) {
+        const text = response.text;
+        const candidate = response.candidates?.[0];
+        const groundingMetadata = candidate?.groundingMetadata;
+        const webSearchQueries = groundingMetadata?.webSearchQueries || [];
+        const groundingChunks = groundingMetadata?.groundingChunks || [];
+
+        res.json({
+          text,
+          modelUsed: selectedModel,
+          groundingMetadata: {
+            webSearchQueries,
+            groundingChunks: groundingChunks.map((chunk: any) => ({
+              web: chunk.web ? { uri: chunk.web.uri, title: chunk.web.title } : undefined
+            })).filter((c: any) => c.web)
+          }
+        });
+        return;
+      }
+    }
+
+    // High-quality fallback if API key or live service is unreachable
+    const lastUserMessage = messages[messages.length - 1]?.content || "";
+    const lower = lastUserMessage.toLowerCase();
+    let fallbackReply = "Chef tip: Always salt your pasta water generously until it tastes like the sea — it seasons the pasta from the inside out! What dish are you preparing today?";
+    if (lower.includes("substitute") || lower.includes("swap") || lower.includes("instead of")) {
+      fallbackReply = "Here are quick substitution ratios:\n• **Buttermilk**: 1 cup milk + 1 tbsp lemon juice or white vinegar (let stand 5 mins).\n• **Heavy Cream**: 3/4 cup milk + 1/4 cup melted unsalted butter.\n• **Egg in baking**: 1/4 cup applesauce or 1/2 mashed banana per egg.\n• **Soy sauce**: Tamari, coconut aminos, or Worcester sauce with a splash of water.";
+    } else if (lower.includes("salt") || lower.includes("salty")) {
+      fallbackReply = "To salvage an over-salted dish:\n1. **Add an Acid**: A splash of lemon juice or apple cider vinegar cuts through salt perception.\n2. **Dilute**: Add unsalted broth, water, cream, or crushed unsalted tomatoes.\n3. **Add Starch**: Toss in a raw quartered potato or extra cooked grains to soak up salinity.";
+    } else if (lower.includes("sear") || lower.includes("stick") || lower.includes("pan")) {
+      fallbackReply = "To prevent food sticking and get a golden crust:\n• Heat the dry pan first over medium-high heat until hot to the touch.\n• Add oil and wait until it shimmers.\n• Pat protein completely dry with paper towels before placing in the pan.\n• Don't move the protein for the first 2-3 minutes until a natural crust releases it!";
+    }
+
+    res.json({
+      text: fallbackReply,
+      modelUsed: "offline-culinary-fallback",
+      groundingMetadata: {
+        webSearchQueries: [],
+        groundingChunks: []
+      }
+    });
+  } catch (error: any) {
+    console.error("Chat error:", error);
+    res.status(500).json({ error: error.message || "Failed to process chat message." });
+  }
+});
+
+
+app.post("/api/recipes", recipeLimiter, async (req, res) => {
   try {
     const { ings, filters, engine = "instant", consultWeb = false } = req.body;
     if (!ings || !Array.isArray(ings) || ings.length === 0) {
        res.status(400).json({ error: "Missing ingredients parameter." });
+       return;
+    }
+    // Also rejects non-string entries, which the cache key below would
+    // otherwise throw on.
+    if (
+      ings.length > MAX_INGREDIENTS ||
+      ings.some((i: unknown) => typeof i !== "string" || i.length > MAX_INGREDIENT_CHARS)
+    ) {
+       res.status(400).json({ error: `Please send up to ${MAX_INGREDIENTS} ingredients.` });
        return;
     }
 
@@ -665,6 +824,7 @@ Suggest exactly 4 unique, delicious, and highly relevant recipes that MUST utili
             "Assign a fun, relevant emoji to represent each dish.";
 
           const response = await generateContentWithRetry(ai, {
+            model: consultWeb ? "gemini-3.5-flash" : undefined,
             contents: userPrompt,
             config: {
               systemInstruction,
@@ -775,11 +935,15 @@ Suggest exactly 4 unique, delicious, and highly relevant recipes that MUST utili
   }
 });
 
-app.post("/api/scan", async (req, res) => {
+app.post("/api/scan", scanLimiter, async (req, res) => {
   try {
     const { image, mimeType } = req.body;
     if (!image) {
        res.status(400).json({ error: "Missing image data" });
+       return;
+    }
+    if (typeof image !== "string" || image.length > MAX_IMAGE_CHARS) {
+       res.status(413).json({ error: "That image is too large — please send a smaller photo." });
        return;
     }
 
@@ -855,9 +1019,11 @@ app.post("/api/scan", async (req, res) => {
   }
 });
 
-app.get("/api/seasonal-tips", async (req, res) => {
+app.get("/api/seasonal-tips", tipsLimiter, async (req, res) => {
   try {
-    const month = (req.query.month as string) || new Date().toLocaleString("en-US", { month: "long" });
+    // Straight off the query string and into the prompt, so bound it.
+    const month =
+      String(req.query.month || new Date().toLocaleString("en-US", { month: "long" })).slice(0, 32);
     const key = process.env.GEMINI_API_KEY;
     const isValidKey = key && key !== "MY_GEMINI_API_KEY" && key !== "undefined" && key !== "null" && key.trim().length > 0;
 
@@ -878,6 +1044,7 @@ Return ONLY a valid JSON object matching this schema format, with no conversatio
 }`;
 
         const response = await generateContentWithRetry(ai, {
+          model: "gemini-3.5-flash",
           contents: prompt,
           config: {
             tools: [{ googleSearch: {} }]
@@ -926,9 +1093,13 @@ Return ONLY a valid JSON object matching this schema format, with no conversatio
   }
 });
 
-app.post("/api/generate-image", async (req, res) => {
+app.post("/api/generate-image", imageLimiter, async (req, res) => {
   try {
     const { prompt, recipeName } = req.body || {};
+    if (typeof prompt === "string" && prompt.length > 1_000) {
+       res.status(413).json({ error: "That image prompt is too long." });
+       return;
+    }
     const key = process.env.GEMINI_API_KEY;
     const isValidKey = key && key !== "MY_GEMINI_API_KEY" && key !== "undefined" && key !== "null" && key.trim().length > 0;
 

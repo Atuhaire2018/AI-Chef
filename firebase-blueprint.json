@@ -40,6 +40,27 @@
         "userId": { "type": "string", "maxLength": 128 }
       },
       "required": ["name", "userId"]
+    },
+    "GroceryOrder": {
+      "title": "Grocery Order",
+      "description": "Grocery order placed by user with local store delivery fulfillment",
+      "type": "object",
+      "properties": {
+        "orderId": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "items": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "itemCount": { "type": "integer" },
+        "store": { "type": "string", "maxLength": 128 },
+        "deliveryAddress": { "type": "string", "maxLength": 512 },
+        "deliverySpeed": { "type": "string", "maxLength": 64 },
+        "totalAmount": { "type": "number" },
+        "status": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["orderId", "userId", "items", "createdAt", "status"]
     }
   },
   "firestore": {
@@ -54,6 +75,10 @@
     "/users/{userId}/cartItems/{itemId}": {
       "schema": "CartItem",
       "description": "Shopping cart items saved by the user"
+    },
+    "/users/{userId}/orders/{orderId}": {
+      "schema": "GroceryOrder",
+      "description": "Grocery orders placed and tracked by the authenticated user"
     }
   }
 }
